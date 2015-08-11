@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..3c97f99 100644
+index 394d0d1..b9ab64c 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -41,7 +41,7 @@ index 394d0d1..3c97f99 100644
  using namespace clang;
  using namespace CodeGen;
  using namespace llvm;
-@@ -1530,6 +1532,39 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1532,57 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -53,9 +53,11 @@ index 394d0d1..3c97f99 100644
 +    std::pair<llvm::Value *, unsigned> SumOutPtr =
 +      EmitPointerWithAlignment(E->getArg(2));
 +
-+    const Type *XTy = E->getArg(0)->getType()->getUnqualifiedDesugaredType();
-+    const Type *YTy = E->getArg(1)->getType()->getUnqualifiedDesugaredType();
-+    const Type *RTy = E->getArg(2)->getType()->getAs<PointerType>()
++    llvm::Type * OTy = cast<llvm::PointerType>(SumOutPtr.first->getType())->getElementType();
++
++    const clang::Type *XTy = E->getArg(0)->getType()->getUnqualifiedDesugaredType();
++    const clang::Type *YTy = E->getArg(1)->getType()->getUnqualifiedDesugaredType();
++    const clang::Type *RTy = E->getArg(2)->getType()->getAs<PointerType>()
 +      ->getPointeeType()->getUnqualifiedDesugaredType();
 +
 +    //DEBUG(llvm::dbgs() << "hi there: ");
@@ -70,6 +72,22 @@ index 394d0d1..3c97f99 100644
 +        : llvm::Intrinsic::sadd_with_overflow;
 +      llvm::Value *Carry;
 +      llvm::Value *Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
++
++      //DEBUG(dbgs() << "storing: ");
++      //DEBUG(Sum->getType()->print(dbgs()));
++      //DEBUG(dbgs() << " -> ");
++      //DEBUG(SumOutPtr.first->getType()->print(dbgs()));
++      //DEBUG(dbgs() << " ");
++      //DEBUG(dbgs() << llvm::Intrinsic::getName(llvm::Intrinsic::uadd_with_overflow, X->getType()));
++      //DEBUG(dbgs() << "\n");
++
++      // If the result is a _Bool*, EmitPointerWithAlignment gives us
++      // an i8* instead of an i1*.  Therefore we need to zero-extend
++      // Sum (which is an i1) to i8 before storing it.
++      if (Sum->getType()->isIntegerTy(1))
++      {
++        Sum = Builder.CreateZExt(Sum, OTy);
++      }
 +      Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
 +      return RValue::get(Carry);
 +    }
