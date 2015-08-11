@@ -1,0 +1,113 @@
+diff --git a/include/clang/Basic/Builtins.def b/include/clang/Basic/Builtins.def
+index f9ec004..51ce4cb 100644
+--- a/include/clang/Basic/Builtins.def
++++ b/include/clang/Basic/Builtins.def
+@@ -1216,6 +1216,9 @@ BUILTIN(__builtin_subcl, "ULiULiCULiCULiCULi*", "n")
+ BUILTIN(__builtin_subcll, "ULLiULLiCULLiCULLiCULLi*", "n")
+ 
+ // Checked Arithmetic Builtins for Security.
++BUILTIN(__builtin_add_overflow, "v.", "nt")
++BUILTIN(__builtin_sub_overflow, "v.", "nt")
++BUILTIN(__builtin_mul_overflow, "v.", "nt")
+ BUILTIN(__builtin_uadd_overflow, "bUiCUiCUi*", "n")
+ BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
+ BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
+diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
+index 394d0d1..c4bd6a6 100644
+--- a/lib/CodeGen/CGBuiltin.cpp
++++ b/lib/CodeGen/CGBuiltin.cpp
+@@ -28,6 +28,8 @@
+ #include "llvm/IR/Intrinsics.h"
+ #include <sstream>
+ 
++#define DEBUG_TYPE "david"
++
+ using namespace clang;
+ using namespace CodeGen;
+ using namespace llvm;
+@@ -1530,6 +1532,24 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+     CarryOutStore->setAlignment(CarryOutPtr.second);
+     return RValue::get(Sum2);
+   }
++
++  case Builtin::BI__builtin_add_overflow: {
++    // Scalarize our inputs.
++    llvm::Value *X = EmitScalarExpr(E->getArg(0));
++    llvm::Value *Y = EmitScalarExpr(E->getArg(1));
++    std::pair<llvm::Value *, unsigned> SumOutPtr =
++      EmitPointerWithAlignment(E->getArg(2));
++
++    DEBUG(llvm::dbgs() << "hi\n");
++    llvm::Intrinsic::ID IntrinsicId = llvm::Intrinsic::sadd_with_overflow;
++    llvm::Value *Carry;
++    llvm::Value *Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
++    llvm::StoreInst *SumOutStore = Builder.CreateStore(Sum, SumOutPtr.first);
++    SumOutStore->setAlignment(SumOutPtr.second);
++    return RValue::get(Carry);
++    return RValue::get(llvm::Constant::getNullValue(IntTy));
++  }
++
+   case Builtin::BI__builtin_uadd_overflow:
+   case Builtin::BI__builtin_uaddl_overflow:
+   case Builtin::BI__builtin_uaddll_overflow:
+diff --git a/lib/Sema/SemaDecl.cpp b/lib/Sema/SemaDecl.cpp
+index e25b160..efa877b 100644
+--- a/lib/Sema/SemaDecl.cpp
++++ b/lib/Sema/SemaDecl.cpp
+@@ -45,6 +45,8 @@
+ #include "clang/Sema/Template.h"
+ #include "llvm/ADT/SmallString.h"
+ #include "llvm/ADT/Triple.h"
++#include "llvm/Support/debug.h"
++#define DEBUG_TYPE "david"
+ #include <algorithm>
+ #include <cstring>
+ #include <functional>
+@@ -740,6 +742,8 @@ Sema::ClassifyName(Scope *S, CXXScopeSpec &SS, IdentifierInfo *&Name,
+                                 QualType(), false, SS, nullptr, false);
+   }
+ 
++  DEBUG(llvm::dbgs() << "Classifying name: " << Name->getNameStart() << "\n");
++
+   LookupResult Result(*this, Name, NameLoc, LookupOrdinaryName);
+   LookupParsedName(Result, S, &SS, !CurMethod);
+ 
+@@ -765,6 +769,7 @@ Sema::ClassifyName(Scope *S, CXXScopeSpec &SS, IdentifierInfo *&Name,
+   bool IsFilteredTemplateName = false;
+   
+ Corrected:
++  DEBUG(llvm::dbgs() << "  Result kind: " << Result.getResultKind() << "\n");
+   switch (Result.getResultKind()) {
+   case LookupResult::NotFound:
+     // If an unqualified-id is followed by a '(', then we have a function
+diff --git a/lib/Sema/SemaLookup.cpp b/lib/Sema/SemaLookup.cpp
+index bf67ae2..de87003 100644
+--- a/lib/Sema/SemaLookup.cpp
++++ b/lib/Sema/SemaLookup.cpp
+@@ -42,6 +42,8 @@
+ #include "llvm/ADT/StringMap.h"
+ #include "llvm/ADT/TinyPtrVector.h"
+ #include "llvm/ADT/edit_distance.h"
++#include "llvm/Support/Debug.h"
++#define DEBUG_TYPE "david"
+ #include "llvm/Support/ErrorHandling.h"
+ #include <algorithm>
+ #include <iterator>
+@@ -564,6 +566,8 @@ void LookupResult::print(raw_ostream &Out) {
+ static bool LookupBuiltin(Sema &S, LookupResult &R) {
+   Sema::LookupNameKind NameKind = R.getLookupKind();
+ 
++  DEBUG(llvm::dbgs() << "Looking up builtin: " << R.getLookupName().getAsString() << "\n");
++
+   // If we didn't find a use of this identifier, and if the identifier
+   // corresponds to a compiler builtin, create the decl object for the builtin
+   // now, injecting it into translation unit scope, and return it.
+@@ -1506,6 +1510,8 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
+   DeclarationName Name = R.getLookupName();
+   if (!Name) return false;
+ 
++  DEBUG(llvm::dbgs() << "Looking up name: " << Name.getAsString() << "\n");
++
+   LookupNameKind NameKind = R.getLookupKind();
+ 
+   if (!getLangOpts().CPlusPlus) {
