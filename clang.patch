@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..b61c99c 100644
+index 394d0d1..3c97f99 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -41,7 +41,7 @@ index 394d0d1..b61c99c 100644
  using namespace clang;
  using namespace CodeGen;
  using namespace llvm;
-@@ -1530,6 +1532,22 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1532,39 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -53,19 +53,36 @@ index 394d0d1..b61c99c 100644
 +    std::pair<llvm::Value *, unsigned> SumOutPtr =
 +      EmitPointerWithAlignment(E->getArg(2));
 +
-+    DEBUG(llvm::dbgs() << "hi\n");
-+    llvm::Intrinsic::ID IntrinsicId = llvm::Intrinsic::sadd_with_overflow;
-+    llvm::Value *Carry;
-+    llvm::Value *Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
-+    Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
-+    return RValue::get(Carry);
++    const Type *XTy = E->getArg(0)->getType()->getUnqualifiedDesugaredType();
++    const Type *YTy = E->getArg(1)->getType()->getUnqualifiedDesugaredType();
++    const Type *RTy = E->getArg(2)->getType()->getAs<PointerType>()
++      ->getPointeeType()->getUnqualifiedDesugaredType();
++
++    //DEBUG(llvm::dbgs() << "hi there: ");
++    //DEBUG(llvm::dbgs() << XQualTy->getAsString() << " ");
++    //DEBUG(llvm::dbgs() << YQualTy->getAsString() << " ");
++    //DEBUG(llvm::dbgs() << RQualTy->getAsString() << "\n");
++
++    if (XTy == YTy && XTy == RTy)
++    {
++      llvm::Intrinsic::ID IntrinsicId = RTy->isUnsignedIntegerType()
++        ? llvm::Intrinsic::uadd_with_overflow
++        : llvm::Intrinsic::sadd_with_overflow;
++      llvm::Value *Carry;
++      llvm::Value *Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
++      Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
++      return RValue::get(Carry);
++    }
++
++    CGM.Error(E->getLocStart(), "cannot generate code for this combination of argument types yet");
++    return GetUndefRValue(E->getType());
 +  }
 +
    case Builtin::BI__builtin_uadd_overflow:
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index a8a7009..e01c3f4 100644
+index a8a7009..a191036 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
 @@ -111,6 +111,36 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
@@ -76,7 +93,7 @@ index a8a7009..e01c3f4 100644
 +  if (checkArgCount(S, TheCall, 3))
 +    return true;
 +
-+  // First two arguments should be an integers.
++  // First two arguments should be integers.
 +  for (unsigned i = 0; i < 2; i++)
 +  {
 +    Expr *Arg = TheCall->getArg(i);
