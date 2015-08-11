@@ -13,10 +13,18 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..92ba2f9 100644
+index 394d0d1..09218bb 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
-@@ -28,6 +28,8 @@
+@@ -21,6 +21,7 @@
+ #include "clang/Basic/TargetBuiltins.h"
+ #include "clang/Basic/TargetInfo.h"
+ #include "clang/CodeGen/CGFunctionInfo.h"
++#include "clang/Sema/SemaDiagnostic.h"
+ #include "llvm/ADT/StringExtras.h"
+ #include "llvm/IR/CallSite.h"
+ #include "llvm/IR/DataLayout.h"
+@@ -28,6 +29,8 @@
  #include "llvm/IR/Intrinsics.h"
  #include <sstream>
  
@@ -25,12 +33,21 @@ index 394d0d1..92ba2f9 100644
  using namespace clang;
  using namespace CodeGen;
  using namespace llvm;
-@@ -1530,6 +1532,23 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1533,31 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
 +
 +  case Builtin::BI__builtin_add_overflow: {
++    if (E->getNumArgs() != 3)
++    {
++      unsigned DiagID = E->getNumArgs() < 3
++                          ? diag::err_typecheck_call_too_few_args
++                          : diag::err_typecheck_call_too_many_args;
++      CGM.getDiags().Report(E->getLocEnd(), DiagID) << 0 << 3 << E->getNumArgs();
++      return GetUndefRValue(E->getType());
++    }
++
 +    // Scalarize our inputs.
 +    llvm::Value *X = EmitScalarExpr(E->getArg(0));
 +    llvm::Value *Y = EmitScalarExpr(E->getArg(1));
@@ -43,7 +60,6 @@ index 394d0d1..92ba2f9 100644
 +    llvm::Value *Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
 +    Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
 +    return RValue::get(Carry);
-+    return RValue::get(llvm::Constant::getNullValue(IntTy));
 +  }
 +
    case Builtin::BI__builtin_uadd_overflow:

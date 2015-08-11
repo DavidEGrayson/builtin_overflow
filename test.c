@@ -31,7 +31,15 @@ void error(const char * format, ...)
   TEST_ADD_1(a, b, res, ovf) \
   TEST_ADD_1(b, a, res, ovf)
 
-int main()
+void x(int, int, int);
+
+static void test_errors()
+{
+  //__builtin_add_overflow();  // too few arguments to function call, expected 3, have 0
+  //__builtin_add_overflow(1, 2, 3, 4);  // too many arguments to function call, expected 3, have 4
+}
+
+static void test_add()
 {
   TEST_ADD((int32_t)1,         (int32_t)2,         (int32_t)3,         0);
   TEST_ADD((int32_t)INT_MAX,   (int32_t)0,         (int32_t)INT_MAX,   0);
@@ -40,6 +48,11 @@ int main()
   TEST_ADD((uint32_t)1,        (uint32_t)2,        (uint32_t)3,         0);
   TEST_ADD((uint32_t)UINT_MAX, (uint32_t)0,        (uint32_t)UINT_MAX,  0);
   TEST_ADD((uint32_t)UINT_MAX, (uint32_t)1,        (uint32_t)0,         1);
+}
 
+int main()
+{
+  test_errors();
+  test_add();
   return 0;
 }
