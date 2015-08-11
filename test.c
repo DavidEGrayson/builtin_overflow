@@ -37,9 +37,10 @@ static void test_errors()
 {
   int x;
 
-  //__builtin_add_overflow();            // too few arguments
-  //__builtin_add_overflow(1, 2, 3, 4);  // too many arguments
-  //__builtin_add_overflow(1.2, 1, &x); // 1st arg bad
+  //__builtin_add_overflow();            // too few args
+  //__builtin_add_overflow(1, 2, 3, 4);  // too many args
+  //__builtin_add_overflow(1.2, 1, &x);  // 1st arg bad
+  //__builtin_add_overflow(1, "a", &x);  // 2nd arg bad
 }
 
 static void test_add()

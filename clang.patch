@@ -65,10 +65,10 @@ index 394d0d1..b61c99c 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index a8a7009..93bb328 100644
+index a8a7009..d6c0afd 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
-@@ -111,6 +111,22 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
+@@ -111,6 +111,25 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
    return false;
  }
  
@@ -77,12 +77,15 @@ index a8a7009..93bb328 100644
 +    return true;
 +
 +  // First two arguments should be an integers.
-+  Expr *ValArg = TheCall->getArg(0);
-+  QualType Ty = ValArg->getType();
-+  if (!Ty->isIntegerType()) {
-+    S.Diag(ValArg->getLocStart(), diag::err_overflow_builtin_must_be_int)
-+      << Ty << ValArg->getSourceRange();
-+    return true;
++  for (unsigned i = 0; i < 2; i++)
++  {
++    Expr *Arg = TheCall->getArg(i);
++    QualType Ty = Arg->getType();
++    if (!Ty->isIntegerType()) {
++      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_int)
++        << Ty << Arg->getSourceRange();
++      return true;
++    }
 +  }
 +
 +  return false;
@@ -91,7 +94,7 @@ index a8a7009..93bb328 100644
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -453,6 +469,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
+@@ -453,6 +472,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
