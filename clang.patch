@@ -13,7 +13,7 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
-index 2afcb76..e1db49d 100644
+index 2afcb76..7e1c63d 100644
 --- a/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/include/clang/Basic/DiagnosticSemaKinds.td
 @@ -6185,6 +6185,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
@@ -22,7 +22,7 @@ index 2afcb76..e1db49d 100644
  
 +def err_overflow_builtin_must_be_int : Error<
 +  "operand argument to overflow builtin must be an integer (%0 invalid)">;
-+def err_overflow_builtin_must_be_pointer_int : Error<
++def err_overflow_builtin_must_be_ptr_int : Error<
 +  "result argument to overflow builtin must be a pointer to integer (%0 invalid)">;
 +
  def err_atomic_load_store_uses_lib : Error<
@@ -65,10 +65,10 @@ index 394d0d1..b61c99c 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index a8a7009..d6c0afd 100644
+index a8a7009..e01c3f4 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
-@@ -111,6 +111,25 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
+@@ -111,6 +111,36 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
    return false;
  }
  
@@ -88,13 +88,24 @@ index a8a7009..d6c0afd 100644
 +    }
 +  }
 +
++  // Third argument should be a pointer to an integer.
++  {
++    Expr *Arg = TheCall->getArg(2);
++    QualType Ty = Arg->getType();
++    const PointerType *PtrTy = Ty->getAs<PointerType>();
++    if (!(PtrTy && PtrTy->getPointeeType()->isIntegerType())) {
++      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_ptr_int)
++        << Ty << Arg->getSourceRange();
++    }
++  }
++
 +  return false;
 +}
 +
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -453,6 +472,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
+@@ -453,6 +483,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;

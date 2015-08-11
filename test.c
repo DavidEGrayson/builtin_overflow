@@ -36,11 +36,14 @@ void x(int, int, int);
 static void test_errors()
 {
   int x;
+  float f;
 
   //__builtin_add_overflow();            // too few args
   //__builtin_add_overflow(1, 2, 3, 4);  // too many args
   //__builtin_add_overflow(1.2, 1, &x);  // 1st arg bad
   //__builtin_add_overflow(1, "a", &x);  // 2nd arg bad
+  //__builtin_add_overflow(1, 1, 3);     // 3rd arg bad
+  //__builtin_add_overflow(1, 1, &f);    // 3rd arg bad
 }
 
 static void test_add()
