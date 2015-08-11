@@ -35,8 +35,11 @@ void x(int, int, int);
 
 static void test_errors()
 {
-  //__builtin_add_overflow();  // too few arguments to function call, expected 3, have 0
-  //__builtin_add_overflow(1, 2, 3, 4);  // too many arguments to function call, expected 3, have 4
+  int x;
+
+  //__builtin_add_overflow();            // too few arguments
+  //__builtin_add_overflow(1, 2, 3, 4);  // too many arguments
+  //__builtin_add_overflow(1.2, 1, &x); // 1st arg bad
 }
 
 static void test_add()

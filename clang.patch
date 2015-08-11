@@ -12,6 +12,22 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uadd_overflow, "bUiCUiCUi*", "n")
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
+diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
+index 2afcb76..e1db49d 100644
+--- a/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -6185,6 +6185,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
+   "memory order argument to atomic operation is invalid">,
+   InGroup<DiagGroup<"atomic-memory-ordering">>;
+ 
++def err_overflow_builtin_must_be_int : Error<
++  "operand argument to overflow builtin must be an integer (%0 invalid)">;
++def err_overflow_builtin_must_be_pointer_int : Error<
++  "result argument to overflow builtin must be a pointer to integer (%0 invalid)">;
++
+ def err_atomic_load_store_uses_lib : Error<
+   "atomic %select{load|store}0 requires runtime support that is not "
+   "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
 index 394d0d1..b61c99c 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
@@ -49,23 +65,33 @@ index 394d0d1..b61c99c 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index a8a7009..91da8d9 100644
+index a8a7009..93bb328 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
-@@ -111,6 +111,12 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
+@@ -111,6 +111,22 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
    return false;
  }
  
 +static bool SemaBuiltinOverflow(Sema &S, CallExpr *TheCall) {
 +  if (checkArgCount(S, TheCall, 3))
 +    return true;
++
++  // First two arguments should be an integers.
++  Expr *ValArg = TheCall->getArg(0);
++  QualType Ty = ValArg->getType();
++  if (!Ty->isIntegerType()) {
++    S.Diag(ValArg->getLocStart(), diag::err_overflow_builtin_must_be_int)
++      << Ty << ValArg->getSourceRange();
++    return true;
++  }
++
 +  return false;
 +}
 +
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -453,6 +459,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
+@@ -453,6 +469,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
