@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..15c5c2e 100644
+index 394d0d1..ff1b69b 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -41,7 +41,7 @@ index 394d0d1..15c5c2e 100644
  using namespace clang;
  using namespace CodeGen;
  using namespace llvm;
-@@ -256,6 +258,42 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
+@@ -256,6 +258,46 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -63,20 +63,24 @@ index 394d0d1..15c5c2e 100644
 +
 +  bool Signed2 = Type1->isSignedIntegerType();
 +  uint64_t Width2;
-+  if (Type1->isBooleanType()) {
++  if (Type2->isBooleanType()) {
 +    Width2 = 1;
 +  } else {
 +    Width2 = context.getTypeInfo(Type2).Width;
 +  }
 +
++  //DEBUG(dbgs() << "tra ");
++  //DEBUG(dbgs() << Type1.getAsString() << " " << Width1 << " " << Signed1 << " ");
++  //DEBUG(dbgs() << Type2.getAsString() << " " << Width2 << " " << Signed2 << "\n");
++
 +  if (Signed1 && !Signed2) {
 +    return false;
-+  } else if (Width2 > Width1) {
++  } else if (Width1 < Width2) {
 +    return true;
-+  } else if (Width2 == Width1) {
++  } else if (Width1 == Width2) {
 +    return Signed1 == Signed2;
 +  } else {
-+    return true;
++    return false;
 +  }
 +}
 +
@@ -84,7 +88,7 @@ index 394d0d1..15c5c2e 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1568,73 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1572,77 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -94,14 +98,10 @@ index 394d0d1..15c5c2e 100644
 +    const clang::Expr *YArg = E->getArg(1);
 +    const clang::Expr *RArg = E->getArg(2);
 +
-+    clang::QualType XQTy = XArg->getType();
-+    clang::QualType YQTy = YArg->getType();
-+    clang::QualType RQTy = RArg->getType()
++    clang::QualType XQTy = XArg->getType();//.getCanonicalType();
++    clang::QualType YQTy = YArg->getType();//.getCanonicalType();
++    clang::QualType RQTy = RArg->getType()//.getCanonicalType()
 +      ->getAs<PointerType>()->getPointeeType();
-+
-+    //const clang::Type *XTy = XQTy->getUnqualifiedDesugaredType();
-+    //const clang::Type *YTy = YQTy->getUnqualifiedDesugaredType();
-+    //const clang::Type *RTy = RQTy->getUnqualifiedDesugaredType();
 +
 +    llvm::Value *X = EmitScalarExpr(XArg);
 +    llvm::Value *Y = EmitScalarExpr(YArg);
@@ -112,10 +112,10 @@ index 394d0d1..15c5c2e 100644
 +    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
 +    llvm::Type *OutputLTy = cast<llvm::PointerType>(SumOutPtr.first->getType())->getElementType();
 +
-+    //DEBUG(llvm::dbgs() << "hi there: ");
-+    //DEBUG(llvm::dbgs() << XQualTy->getAsString() << " ");
-+    //DEBUG(llvm::dbgs() << YQualTy->getAsString() << " ");
-+    //DEBUG(llvm::dbgs() << RQualTy->getAsString() << "\n");
++    DEBUG(dbgs() << "hi there: ");
++    DEBUG(dbgs() << XQTy.getAsString() << " ");
++    DEBUG(dbgs() << YQTy.getAsString() << " ");
++    DEBUG(dbgs() << RQTy.getAsString() << "\n");
 +
 +    llvm::Intrinsic::ID IntrinsicId = RQTy->isUnsignedIntegerType()
 +      ? llvm::Intrinsic::uadd_with_overflow
@@ -124,11 +124,13 @@ index 394d0d1..15c5c2e 100644
 +
 +    if (TypeRepresentableAs(CGM.getContext(), XQTy, RQTy) &&
 +        TypeRepresentableAs(CGM.getContext(), YQTy, RQTy)) {
++      DEBUG(dbgs() << "hi there 1.5\n");
 +      if (XQTy->isSignedIntegerType()) {
 +        X = Builder.CreateSExt(X, RLTy);
 +      } else {
 +        X = Builder.CreateZExt(X, RLTy);
 +      }
++      DEBUG(dbgs() << "hi there 1.6\n");
 +
 +      if (YQTy->isSignedIntegerType()) {
 +        Y = Builder.CreateSExt(Y, RLTy);
@@ -136,12 +138,16 @@ index 394d0d1..15c5c2e 100644
 +        Y = Builder.CreateZExt(Y, RLTy);
 +      }
 +
++      DEBUG(dbgs() << "hi there 1.7\n");
 +      Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
++      DEBUG(dbgs() << "hi there 1.8\n");
 +    } else {
 +      CGM.Error(E->getLocStart(),
 +        "cannot generate code for this combination of argument types yet");
 +      return GetUndefRValue(E->getType());
 +    }
++
++    DEBUG(dbgs() << "hi there 2\n");
 +
 +    // If the result argument is a _Bool*, EmitPointerWithAlignment
 +    // gives us an i8* instead of an i1*.  Therefore we need to
@@ -150,8 +156,10 @@ index 394d0d1..15c5c2e 100644
 +    {
 +      Sum = Builder.CreateZExt(Sum, OutputLTy);
 +    }
++    DEBUG(dbgs() << "hi there 3\n");
 +    Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
 +
++    DEBUG(dbgs() << "hi there 4\n");
 +    return RValue::get(Carry);
 +  }
 +

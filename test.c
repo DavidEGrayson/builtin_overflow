@@ -21,6 +21,10 @@
 #include <stdarg.h>
 #include <limits.h>
 
+#if defined(__GNUC__) && !defined(__clang__)
+#define BOOL_NOT_AN_INTEGER
+#endif
+
 static void error(const char * format, ...) __attribute__((format (printf, 1, 2)));
 
 void error(const char * format, ...)
@@ -64,14 +68,39 @@ static void test_errors()
 static void test_add()
 {
   // bool + bool -> bool
+  #ifndef BOOL_NOT_AN_INTEGER
   TEST_ADD((bool)0,            (bool)0,            (bool)0,            0);
   TEST_ADD((bool)0,            (bool)1,            (bool)1,            0);
   TEST_ADD((bool)1,            (bool)1,            (bool)0,            1);
+  #endif
 
   // bool + bool -> int8_t
   TEST_ADD((bool)0,            (bool)0,            (int8_t)0,          0);
   TEST_ADD((bool)0,            (bool)1,            (int8_t)1,          0);
   TEST_ADD((bool)1,            (bool)1,            (int8_t)2,          0);
+
+  // bool + bool -> uint8_t
+  TEST_ADD((bool)0,            (bool)0,            (uint8_t)0,         0);
+  TEST_ADD((bool)0,            (bool)1,            (uint8_t)1,         0);
+  TEST_ADD((bool)1,            (bool)1,            (uint8_t)2,         0);
+
+  // Skipping: bool + bool -> (int16_t through int128_t)
+
+  // bool + bool -> uint128_t
+  TEST_ADD((bool)0,            (bool)0,            (__uint128_t)0,     0);
+  TEST_ADD((bool)0,            (bool)1,            (__uint128_t)1,     0);
+  TEST_ADD((bool)1,            (bool)1,            (__uint128_t)2,     0);
+
+  // bool + int8_t -> bool
+  #ifndef BOOL_NOT_AN_INTEGER
+  TEST_ADD((bool)0,            (int8_t)0,          (bool)0,            0);
+  TEST_ADD((bool)0,            (int8_t)1,          (bool)1,            0);
+  TEST_ADD((bool)1,            (int8_t)-1,         (bool)0,            0);
+  TEST_ADD((bool)1,            (int8_t)-2,         (bool)1,            1);
+  TEST_ADD((bool)1,            (int8_t)3,          (bool)0,            1);
+  TEST_ADD((bool)0,            (int8_t)127,        (bool)1,            1);
+  TEST_ADD((bool)0,            (int8_t)-128,       (bool)0,            1);
+  #endif
 
   TEST_ADD((int32_t)1,         (int32_t)2,         (int32_t)3,         0);
   TEST_ADD((int32_t)INT_MAX,   (int32_t)0,         (int32_t)INT_MAX,   0);
