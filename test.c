@@ -36,10 +36,10 @@ void error(const char * format, ...)
 #define TEST_ADD_1(a, b, res, ovf) \
   { \
     typeof(res) r; \
-    if (ovf != __builtin_add_overflow((a), (b), &r)) \
+    if ((ovf) != __builtin_add_overflow((a), (b), &r))  \
       error("add error at line %d", __LINE__); \
-    if (r != res) \
-      error("incorrect add result at line %d", __LINE__); \
+    if (r != (res)) \
+      error("incorrect add result at line %d", __LINE__);    \
   }
 
 #define TEST_ADD(a, b, res, ovf) \
@@ -66,7 +66,12 @@ static void test_add()
   // bool + bool -> bool
   TEST_ADD((bool)0,            (bool)0,            (bool)0,            0);
   TEST_ADD((bool)0,            (bool)1,            (bool)1,            0);
-  TEST_ADD((bool)1,            (bool)1,            (bool)1,            1);
+  TEST_ADD((bool)1,            (bool)1,            (bool)0,            1);
+
+  // bool + bool -> int8_t
+  TEST_ADD((bool)0,            (bool)0,            (int8_t)0,          0);
+  TEST_ADD((bool)0,            (bool)1,            (int8_t)1,          0);
+  TEST_ADD((bool)1,            (bool)1,            (int8_t)2,          0);
 
   TEST_ADD((int32_t)1,         (int32_t)2,         (int32_t)3,         0);
   TEST_ADD((int32_t)INT_MAX,   (int32_t)0,         (int32_t)INT_MAX,   0);
