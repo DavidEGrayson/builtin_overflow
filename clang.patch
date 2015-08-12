@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..dd59a5a 100644
+index 394d0d1..15c5c2e 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -84,7 +84,7 @@ index 394d0d1..dd59a5a 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1568,83 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1568,73 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -99,9 +99,9 @@ index 394d0d1..dd59a5a 100644
 +    clang::QualType RQTy = RArg->getType()
 +      ->getAs<PointerType>()->getPointeeType();
 +
-+    const clang::Type *XTy = XQTy->getUnqualifiedDesugaredType();
-+    const clang::Type *YTy = YQTy->getUnqualifiedDesugaredType();
-+    const clang::Type *RTy = RQTy->getUnqualifiedDesugaredType();
++    //const clang::Type *XTy = XQTy->getUnqualifiedDesugaredType();
++    //const clang::Type *YTy = YQTy->getUnqualifiedDesugaredType();
++    //const clang::Type *RTy = RQTy->getUnqualifiedDesugaredType();
 +
 +    llvm::Value *X = EmitScalarExpr(XArg);
 +    llvm::Value *Y = EmitScalarExpr(YArg);
@@ -117,30 +117,20 @@ index 394d0d1..dd59a5a 100644
 +    //DEBUG(llvm::dbgs() << YQualTy->getAsString() << " ");
 +    //DEBUG(llvm::dbgs() << RQualTy->getAsString() << "\n");
 +
-+    llvm::Intrinsic::ID IntrinsicId = RTy->isUnsignedIntegerType()
++    llvm::Intrinsic::ID IntrinsicId = RQTy->isUnsignedIntegerType()
 +      ? llvm::Intrinsic::uadd_with_overflow
 +      : llvm::Intrinsic::sadd_with_overflow;
 +    llvm::Value *Carry, *Sum;
 +
-+    if (XTy == YTy && XTy == RTy) {
-+      Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
-+
-+      //DEBUG(dbgs() << "storing: ");
-+      //DEBUG(Sum->getType()->print(dbgs()));
-+      //DEBUG(dbgs() << " -> ");
-+      //DEBUG(SumOutPtr.first->getType()->print(dbgs()));
-+      //DEBUG(dbgs() << " ");
-+      //DEBUG(dbgs() << llvm::Intrinsic::getName(llvm::Intrinsic::uadd_with_overflow, X->getType()));
-+      //DEBUG(dbgs() << "\n");
-+    } else if (TypeRepresentableAs(CGM.getContext(), XQTy, RQTy) &&
-+               TypeRepresentableAs(CGM.getContext(), YQTy, RQTy)) {
-+      if (XTy->isSignedIntegerType()) {
++    if (TypeRepresentableAs(CGM.getContext(), XQTy, RQTy) &&
++        TypeRepresentableAs(CGM.getContext(), YQTy, RQTy)) {
++      if (XQTy->isSignedIntegerType()) {
 +        X = Builder.CreateSExt(X, RLTy);
 +      } else {
 +        X = Builder.CreateZExt(X, RLTy);
 +      }
 +
-+      if (YTy->isSignedIntegerType()) {
++      if (YQTy->isSignedIntegerType()) {
 +        Y = Builder.CreateSExt(Y, RLTy);
 +      } else {
 +        Y = Builder.CreateZExt(Y, RLTy);
