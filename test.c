@@ -127,7 +127,7 @@ void zisolate()
 {
   bool r;
   bool c = __builtin_add_overflow((bool)1, (int8_t)-2, &r);
-  printf("Result: %d, carry: %d\n", r, c);
+  //printf("Result: %d, carry: %d\n", r, c);
 }
 
 int main()

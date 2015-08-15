@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..9b62f65 100644
+index 394d0d1..1ecb38c 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -97,7 +97,7 @@ index 394d0d1..9b62f65 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1581,77 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1581,95 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -151,10 +151,28 @@ index 394d0d1..9b62f65 100644
 +      Y = Builder.CreateZExt(Y, ELTy);
 +    }
 +
-+    llvm::Value *Carry, *Sum;
-+    Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Carry);
++    llvm::Value *Overflow, *Sum;
++    Sum = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Overflow);
 +
-+    llvm::Value * TruncSum = Builder.CreateTrunc(Sum, RLTy);
++    if (EITy.first > RITy.first)
++    {
++      // The encompassing type is wider than the result type, so we need to
++      // truncate it.
++      llvm::Value * TruncSum = Builder.CreateTrunc(Sum, RLTy);
++
++      // To see if the truncation caused an overflow, we will extend/untruncate
++      // it and then compare it to the original, sum.
++      llvm::Value * ExtendedSum;
++      if (RITy.second) {
++        ExtendedSum = Builder.CreateSExt(TruncSum, ELTy);
++      } else {
++        ExtendedSum = Builder.CreateZExt(TruncSum, ELTy);
++      }
++      llvm::Value * TruncationOverflow = Builder.CreateICmpNE(Sum, ExtendedSum);
++
++      Overflow = Builder.CreateOr(Overflow, TruncationOverflow);
++      Sum = TruncSum;
++    }
 +
 +    //CGM.Error(E->getLocStart(),
 +    //    "cannot generate code for this combination of argument types yet");
@@ -163,13 +181,13 @@ index 394d0d1..9b62f65 100644
 +    // If the result argument is a _Bool*, EmitPointerWithAlignment gives us an
 +    // i8*.  If our sum is an i1, we need to zero-extend before storing.
 +    if (RLTy->isIntegerTy(1)) {
-+      TruncSum = Builder.CreateZExt(TruncSum, OutputLTy);
++      Sum = Builder.CreateZExt(Sum, OutputLTy);
 +    }
 +    DEBUG(dbgs() << "hi there 3\n");
-+    Builder.CreateAlignedStore(TruncSum, SumOutPtr.first, SumOutPtr.second);
++    Builder.CreateAlignedStore(Sum, SumOutPtr.first, SumOutPtr.second);
 +
 +    DEBUG(dbgs() << "hi there 4\n");
-+    return RValue::get(Carry);
++    return RValue::get(Overflow);
 +  }
 +
    case Builtin::BI__builtin_uadd_overflow:
