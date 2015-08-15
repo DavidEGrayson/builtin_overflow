@@ -41,9 +41,9 @@ void error(const char * format, ...)
   { \
     typeof(res) r; \
     if ((ovf) != __builtin_add_overflow((a), (b), &r))  \
-      error("add error at line %d", __LINE__); \
+      error("overflow detection error at line %d", __LINE__); \
     if (r != (res)) \
-      error("incorrect add result at line %d", __LINE__);    \
+      error("incorrect result at line %d", __LINE__);    \
   }
 
 #define TEST_ADD(a, b, res, ovf) \
@@ -75,11 +75,6 @@ static void test_basics()
     __builtin_add_overflow(1, 1, px);
 }
 
-void isolate()
-{
-    TEST_ADD_1((int32_t)INT_MAX,   (int32_t)1,         (int32_t)INT_MIN,   1);
-}
-
 static void test_add()
 {
   // bool + bool -> bool
@@ -108,13 +103,13 @@ static void test_add()
 
   // bool + int8_t -> bool
   #ifndef BOOL_NOT_AN_INTEGER
-  //TODO: TEST_ADD((bool)0,            (int8_t)0,          (bool)0,            0);
-  //TEST_ADD((bool)0,            (int8_t)1,          (bool)1,            0);
-  //TEST_ADD((bool)1,            (int8_t)-1,         (bool)0,            0);
-  //TEST_ADD((bool)1,            (int8_t)-2,         (bool)1,            1);
-  //TEST_ADD((bool)1,            (int8_t)3,          (bool)0,            1);
-  //TEST_ADD((bool)0,            (int8_t)127,        (bool)1,            1);
-  //TEST_ADD((bool)0,            (int8_t)-128,       (bool)0,            1);
+  TEST_ADD((bool)0,            (int8_t)0,          (bool)0,            0);
+  TEST_ADD((bool)0,            (int8_t)1,          (bool)1,            0);
+  TEST_ADD((bool)1,            (int8_t)-1,         (bool)0,            0);
+  TEST_ADD((bool)1,            (int8_t)-2,         (bool)1,            1);
+  TEST_ADD((bool)1,            (int8_t)3,          (bool)0,            1);
+  TEST_ADD((bool)0,            (int8_t)127,        (bool)1,            1);
+  TEST_ADD((bool)0,            (int8_t)-128,       (bool)0,            1);
   #endif
 
   TEST_ADD((int32_t)1,         (int32_t)2,         (int32_t)3,         0);
@@ -128,10 +123,18 @@ static void test_add()
   //TEST_ADD((uint32_t)1,        (int32_t)2,         (uint32_t)3,         0);
 }
 
+void zisolate()
+{
+  bool r;
+  bool c = __builtin_add_overflow((bool)1, (int8_t)-2, &r);
+  printf("Result: %d, carry: %d\n", r, c);
+}
+
 int main()
 {
   test_errors();
   test_basics();
   test_add();
+  zisolate();
   return 0;
 }
