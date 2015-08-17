@@ -13,10 +13,10 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
-index 2afcb76..7e1c63d 100644
+index 2d6545c..252ac80 100644
 --- a/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/include/clang/Basic/DiagnosticSemaKinds.td
-@@ -6185,6 +6185,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
+@@ -6189,6 +6189,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
    "memory order argument to atomic operation is invalid">,
    InGroup<DiagGroup<"atomic-memory-ordering">>;
  
@@ -29,7 +29,7 @@ index 2afcb76..7e1c63d 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..1ecb38c 100644
+index 394d0d1..84be2ce 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -41,7 +41,7 @@ index 394d0d1..1ecb38c 100644
  using namespace clang;
  using namespace CodeGen;
  using namespace llvm;
-@@ -256,6 +258,55 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
+@@ -256,6 +258,52 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -61,7 +61,6 @@ index 394d0d1..1ecb38c 100644
 +
 +  // If any of the given types is signed, we must return a signed type.
 +  for(auto it = Types.begin(); it != Types.end(); ++it) {
-+    DEBUG(dbgs() << "  specified type: " << it->first << " " << it->second << "\n");
 +    EncType.second |= it->second;
 +  }
 +
@@ -74,8 +73,6 @@ index 394d0d1..1ecb38c 100644
 +      EncType.first = width;
 +    }
 +  }
-+
-+  DEBUG(dbgs() << "  encompassing type: " << EncType.first << " " << EncType.second << "\n");
 +
 +  return EncType;
 +}
@@ -97,7 +94,7 @@ index 394d0d1..1ecb38c 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1581,95 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1578,95 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
