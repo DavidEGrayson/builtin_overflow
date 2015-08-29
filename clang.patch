@@ -1,3 +1,41 @@
+diff --git a/docs/LanguageExtensions.rst b/docs/LanguageExtensions.rst
+index ca2e177..d25ae2a 100644
+--- a/docs/LanguageExtensions.rst
++++ b/docs/LanguageExtensions.rst
+@@ -1652,7 +1652,7 @@ an example of their usage:
+   errorcode_t security_critical_application(...) {
+     unsigned x, y, result;
+     ...
+-    if (__builtin_umul_overflow(x, y, &result))
++    if (__builtin_mul_overflow(x, y, &result))
+       return kErrorCodeHackers;
+     ...
+     use_multiply(result);
+@@ -1663,6 +1663,9 @@ A complete enumeration of the builtins are:
+ 
+ .. code-block:: c
+ 
++  bool __builtin_add_overflow   (type1 x, type2 y, type3 *sum);
++  bool __builtin_sub_overflow   (type1 x, type2 y, type3 *diff);
++  bool __builtin_mul_overflow   (type1 x, type2 y, type3 *prod);
+   bool __builtin_uadd_overflow  (unsigned x, unsigned y, unsigned *sum);
+   bool __builtin_uaddl_overflow (unsigned long x, unsigned long y, unsigned long *sum);
+   bool __builtin_uaddll_overflow(unsigned long long x, unsigned long long y, unsigned long long *sum);
+@@ -1682,6 +1685,14 @@ A complete enumeration of the builtins are:
+   bool __builtin_smull_overflow (long x, long y, long *prod);
+   bool __builtin_smulll_overflow(long long x, long long y, long long *prod);
+ 
++Each builtin performs the specified mathematical operation on the first two
++arguments.  If the mathematically-correct result can be stored in the variable
++pointed to by the third argument, then the result is stored there and the
++function returns 0.  Otherwise, the bits of the result are truncated before
++being stored there, and the function returns 1.  The behavior of these builtins
++is well-defined for all argument values.
++
++The first three builtins can operate on any integer types (including booleans).
+ 
+ .. _langext-__c11_atomic:
+ 
 diff --git a/include/clang/Basic/Builtins.def b/include/clang/Basic/Builtins.def
 index f9ec004..51ce4cb 100644
 --- a/include/clang/Basic/Builtins.def
