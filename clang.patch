@@ -13,10 +13,10 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
-index 2d6545c..252ac80 100644
+index 7b21e10..2bdd8ca 100644
 --- a/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/include/clang/Basic/DiagnosticSemaKinds.td
-@@ -6189,6 +6189,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
+@@ -6192,6 +6192,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
    "memory order argument to atomic operation is invalid">,
    InGroup<DiagGroup<"atomic-memory-ordering">>;
  
@@ -29,7 +29,7 @@ index 2d6545c..252ac80 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..52e30f6 100644
+index 955dcfc..6c950e8 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -256,6 +256,50 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
@@ -190,10 +190,10 @@ index 394d0d1..52e30f6 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index a8a7009..a191036 100644
+index 92c9456..dfbbf19 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
-@@ -111,6 +111,36 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
+@@ -112,6 +112,36 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
    return false;
  }
  
@@ -230,7 +230,7 @@ index a8a7009..a191036 100644
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -453,6 +483,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
+@@ -454,6 +484,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
