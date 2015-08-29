@@ -245,10 +245,10 @@ index a8a7009..a191036 100644
    case Builtin::BI__builtin_operator_delete:
      if (!getLangOpts().CPlusPlus) {
 diff --git a/test/CodeGen/builtins-overflow.c b/test/CodeGen/builtins-overflow.c
-index 5c5500d..14290ed 100644
+index 5c5500d..d9043ee 100644
 --- a/test/CodeGen/builtins-overflow.c
 +++ b/test/CodeGen/builtins-overflow.c
-@@ -11,6 +11,70 @@ extern unsigned long long UnsignedLongLongErrorCode;
+@@ -11,6 +11,86 @@ extern unsigned long long UnsignedLongLongErrorCode;
  extern int IntErrorCode;
  extern long LongErrorCode;
  extern long long LongLongErrorCode;
@@ -302,6 +302,7 @@ index 5c5500d..14290ed 100644
 +_Bool test_add_overflow_uint_uint_bool(unsigned x, unsigned y)
 +{
 +// CHECK: @test_add_overflow_uint_uint_bool
++// CHECK-NOT: ext
 +// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
 +// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
 +// CHECK-DAG: [[C1:%.+]] = extractvalue { i32, i1 } [[S]], 1
@@ -313,6 +314,21 @@ index 5c5500d..14290ed 100644
 +// CHECK: store i8 [[QT2]], i8* %r
 +// CHECK: br i1 [[C3]]
 +    _Bool r;
++    if (__builtin_add_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++unsigned test_add_overflow_bool_bool_uint(_Bool x, _Bool y)
++{
++// CHECK: @test_add_overflow_bool_bool_uint
++// CHECK: [[XE:%.+]] = zext i1 %{{.+}} to i32
++// CHECK: [[YE:%.+]] = zext i1 %{{.+}} to i32
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 [[XE]], i32 [[YE]])
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    unsigned r;
 +    if (__builtin_add_overflow(x, y, &r)) overflowed();
 +    return r;
 +}
