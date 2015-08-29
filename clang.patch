@@ -29,10 +29,10 @@ index 2d6545c..252ac80 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..624e68c 100644
+index 394d0d1..52e30f6 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
-@@ -256,6 +256,52 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
+@@ -256,6 +256,50 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -42,9 +42,7 @@ index 394d0d1..624e68c 100644
 +//
 +// This function operates on objects of type std::pair<unsigned, bool>, where
 +// the first element is the bit width of an integer type and the second element
-+// is true the integer type is signed.
-+//
-+// The returned width could be out of bounds and should be checked.
++// is true if the integer type is signed.
 +static std::pair<unsigned, bool> EncompassingIntegerType(
 +  std::vector<std::pair<unsigned, bool>> Types)
 +{
@@ -55,9 +53,9 @@ index 394d0d1..624e68c 100644
 +    EncType.second |= it->second;
 +  }
 +
-+  // The encompassing type must have a width greater than or equal to the
-+  // width of the specified types.  If the encompassing type is signed, its
-+  // width must be strictly greater than the width of any signed types given.
++  // The encompassing type must have a width greater than or equal to the width
++  // of the specified types.  If the encompassing type is signed, its width must
++  // be strictly greater than the width of any unsigned types given.
 +  for(auto it = Types.begin(); it != Types.end(); ++it) {
 +    unsigned width = it->first + (EncType.second && !it->second);
 +    if (EncType.first < width) {
@@ -68,7 +66,7 @@ index 394d0d1..624e68c 100644
 +  return EncType;
 +}
 +
-+static std::pair<unsigned, bool> IntegerWidthAndSignedness(ASTContext &context,
++static std::pair<unsigned, bool> IntegerWidthAndSignedness(const clang::ASTContext &context,
 +                                                           const clang::QualType Type)
 +{
 +  assert(Type->isIntegerType());
@@ -85,7 +83,7 @@ index 394d0d1..624e68c 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1576,105 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1574,105 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -136,7 +134,7 @@ index 394d0d1..624e68c 100644
 +    llvm::Value *Y = EmitScalarExpr(YArg);
 +    std::pair<llvm::Value *, unsigned> OutPtr = EmitPointerWithAlignment(RArg);
 +
-+    // Extend each arugment to the encompassing type.
++    // Extend each argument to the encompassing type.
 +    if (XQTy->isSignedIntegerType()) {
 +      X = Builder.CreateSExt(X, ELTy);
 +    } else {
