@@ -29,7 +29,7 @@ index 2d6545c..252ac80 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..3e3c38e 100644
+index 394d0d1..624e68c 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -256,6 +256,52 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
@@ -108,14 +108,7 @@ index 394d0d1..3e3c38e 100644
 +    std::pair<unsigned, bool> EITy = EncompassingIntegerType({XITy, YITy, RITy});
 +
 +    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.first);
-+
-+    std::pair<llvm::Value *, unsigned> OutPtr = EmitPointerWithAlignment(RArg);
-+
-+    // RLTy and OutputLTy are usually the same, but sometimes
-+    // RLTy is i1 and OutputLTy is i8.
 +    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
-+    llvm::Type *OutputLTy = cast<llvm::PointerType>(OutPtr.first->getType())
-+      ->getElementType();
 +
 +    bool Signed = EITy.second;
 +    llvm::Intrinsic::ID IntrinsicId;
@@ -141,6 +134,7 @@ index 394d0d1..3e3c38e 100644
 +
 +    llvm::Value *X = EmitScalarExpr(XArg);
 +    llvm::Value *Y = EmitScalarExpr(YArg);
++    std::pair<llvm::Value *, unsigned> OutPtr = EmitPointerWithAlignment(RArg);
 +
 +    // Extend each arugment to the encompassing type.
 +    if (XQTy->isSignedIntegerType()) {
@@ -178,11 +172,17 @@ index 394d0d1..3e3c38e 100644
 +      Q = QTrunc;
 +    }
 +
-+    // If the result argument is a _Bool*, EmitPointerWithAlignment gives us an
-+    // i8*.  If our sum is an i1, we need to zero-extend before storing.
++    llvm::Type *OutputLTy = cast<llvm::PointerType>(OutPtr.first->getType())
++      ->getElementType();
++
++    // If the third argument is a pointer to a bool, that is
++    // represented in the LLVM IR as an i8*, but we currently have an
++    // i1, so we need to zero-extend from i1 to i8.
 +    if (RLTy->isIntegerTy(1)) {
 +      Q = Builder.CreateZExt(Q, OutputLTy);
 +    }
++
++    // Finally, store the result using the pointer.
 +    Builder.CreateAlignedStore(Q, OutPtr.first, OutPtr.second);
 +
 +    return RValue::get(Overflow);
