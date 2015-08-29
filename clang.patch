@@ -29,7 +29,7 @@ index 2d6545c..252ac80 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 394d0d1..84be2ce 100644
+index 394d0d1..7063c6a 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -28,6 +28,8 @@
@@ -94,12 +94,14 @@ index 394d0d1..84be2ce 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1578,95 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1578,115 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
 +
-+  case Builtin::BI__builtin_add_overflow: {
++  case Builtin::BI__builtin_add_overflow:
++  case Builtin::BI__builtin_sub_overflow:
++  case Builtin::BI__builtin_mul_overflow: {
 +    const clang::Expr *XArg = E->getArg(0);
 +    const clang::Expr *YArg = E->getArg(1);
 +    const clang::Expr *RArg = E->getArg(2);
@@ -132,9 +134,27 @@ index 394d0d1..84be2ce 100644
 +    DEBUG(dbgs() << EITy.first << " " << EITy.second << " ");
 +    DEBUG(dbgs() << "\n");
 +
-+    llvm::Intrinsic::ID IntrinsicId = EITy.second
-+      ? llvm::Intrinsic::sadd_with_overflow
-+      : llvm::Intrinsic::uadd_with_overflow;
++    bool Signed = EITy.second;
++    llvm::Intrinsic::ID IntrinsicId;
++    switch(BuiltinID)
++    {
++    default: llvm_unreachable("Unknown security overflow builtin id.");
++    case Builtin::BI__builtin_add_overflow:
++      IntrinsicId = Signed
++        ? llvm::Intrinsic::sadd_with_overflow
++        : llvm::Intrinsic::uadd_with_overflow;
++      break;
++    case Builtin::BI__builtin_sub_overflow:
++      IntrinsicId = Signed
++        ? llvm::Intrinsic::ssub_with_overflow
++        : llvm::Intrinsic::usub_with_overflow;
++      break;
++    case Builtin::BI__builtin_mul_overflow:
++      IntrinsicId = Signed
++        ? llvm::Intrinsic::smul_with_overflow
++        : llvm::Intrinsic::umul_with_overflow;
++      break;
++    }
 +
 +    if (XQTy->isSignedIntegerType()) {
 +      X = Builder.CreateSExt(X, ELTy);
@@ -245,10 +265,10 @@ index a8a7009..a191036 100644
    case Builtin::BI__builtin_operator_delete:
      if (!getLangOpts().CPlusPlus) {
 diff --git a/test/CodeGen/builtins-overflow.c b/test/CodeGen/builtins-overflow.c
-index 5c5500d..1075952 100644
+index 5c5500d..67144b1 100644
 --- a/test/CodeGen/builtins-overflow.c
 +++ b/test/CodeGen/builtins-overflow.c
-@@ -11,6 +11,100 @@ extern unsigned long long UnsignedLongLongErrorCode;
+@@ -11,6 +11,153 @@ extern unsigned long long UnsignedLongLongErrorCode;
  extern int IntErrorCode;
  extern long LongErrorCode;
  extern long long LongLongErrorCode;
@@ -277,6 +297,59 @@ index 5c5500d..1075952 100644
 +// CHECK: br i1 [[C]]
 +    int r;
 +    if (__builtin_add_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++unsigned test_sub_overflow_uint_uint_uint(unsigned x, unsigned y) {
++// CHECK: @test_sub_overflow_uint_uint_uint
++// CHECK-NOT: ext
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    unsigned r;
++    if (__builtin_sub_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++int test_sub_overflow_int_int_int(int x, int y) {
++// CHECK: @test_sub_overflow_int_int_int
++// CHECK-NOT: ext
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    int r;
++    if (__builtin_sub_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++
++unsigned test_mul_overflow_uint_uint_uint(unsigned x, unsigned y) {
++// CHECK: @test_mul_overflow_uint_uint_uint
++// CHECK-NOT: ext
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    unsigned r;
++    if (__builtin_mul_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++int test_mul_overflow_int_int_int(int x, int y) {
++// CHECK: @test_mul_overflow_int_int_int
++// CHECK-NOT: ext
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    int r;
++    if (__builtin_mul_overflow(x, y, &r)) overflowed();
 +    return r;
 +}
 +
