@@ -245,10 +245,10 @@ index a8a7009..a191036 100644
    case Builtin::BI__builtin_operator_delete:
      if (!getLangOpts().CPlusPlus) {
 diff --git a/test/CodeGen/builtins-overflow.c b/test/CodeGen/builtins-overflow.c
-index 5c5500d..bb89418 100644
+index 5c5500d..aebfcac 100644
 --- a/test/CodeGen/builtins-overflow.c
 +++ b/test/CodeGen/builtins-overflow.c
-@@ -11,6 +11,19 @@ extern unsigned long long UnsignedLongLongErrorCode;
+@@ -11,6 +11,53 @@ extern unsigned long long UnsignedLongLongErrorCode;
  extern int IntErrorCode;
  extern long LongErrorCode;
  extern long long LongLongErrorCode;
@@ -256,15 +256,49 @@ index 5c5500d..bb89418 100644
 +
 +unsigned test_add_overflow_uint_uint_uint(unsigned x, unsigned y) {
 +// CHECK: @test_add_overflow_uint_uint_uint
++// CHECK-NOT: ext
 +// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-NEXT: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK-NEXT: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-NEXT: store i32 [[Q:%.+]], i32* %r, align 4
-+// CHECK-NEXT: br i1 [[C]]
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
 +    unsigned r;
 +    if (__builtin_add_overflow(x, y, &r)) overflowed();
 +    return r;
 +}
++
++int test_add_overflow_int_int_int(int x, int y) {
++// CHECK: @test_add_overflow_int_int_int
++// CHECK-NOT: ext
++// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++// CHECK: store i32 [[Q]], i32* %r
++// CHECK: br i1 [[C]]
++    int r;
++    if (__builtin_add_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
++int test_add_overflow_uint_int_int(unsigned x, int y)
++{
++// CHECK: @test_add_overflow_uint_int_int
++// CHECK: [[XE:%.+]] = zext i32 %{{.+}} to i33
++// CHECK: [[YE:%.+]] = sext i32 %{{.+}} to i33
++// CHECK: [[S:%.+]] = call { i33, i1 } @llvm.sadd.with.overflow.i33(i33 [[XE]], i33 [[YE]])
++// CHECK-DAG: [[Q:%.+]] = extractvalue { i33, i1 } [[S]], 0
++// CHECK-DAG: [[C1:%.+]] = extractvalue { i33, i1 } [[S]], 1
++// CHECK: [[QT:%.+]] = trunc i33 [[Q]] to i32
++// CHECK: [[QTE:%.+]] = sext i32 [[QT]] to i33
++// CHECK: [[C2:%.+]] = icmp ne i33 [[Q]], [[QTE]]
++// CHECK: [[C3:%.+]] = or i1 [[C1]], [[C2]]
++// CHECK: store i32 [[QT]], i32* %r
++// CHECK: br i1 [[C3]]
++    int r;
++    if (__builtin_add_overflow(x, y, &r)) overflowed();
++    return r;
++}
++
  
  unsigned test_uadd_overflow(unsigned x, unsigned y) {
  // CHECK: @test_uadd_overflow
