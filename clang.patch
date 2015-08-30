@@ -1,8 +1,8 @@
 diff --git a/docs/LanguageExtensions.rst b/docs/LanguageExtensions.rst
-index ca2e177..d25ae2a 100644
+index ca2e177..c92d332 100644
 --- a/docs/LanguageExtensions.rst
 +++ b/docs/LanguageExtensions.rst
-@@ -1652,7 +1652,7 @@ an example of their usage:
+@@ -1652,17 +1652,20 @@ an example of their usage:
    errorcode_t security_critical_application(...) {
      unsigned x, y, result;
      ...
@@ -11,7 +11,11 @@ index ca2e177..d25ae2a 100644
        return kErrorCodeHackers;
      ...
      use_multiply(result);
-@@ -1663,6 +1663,9 @@ A complete enumeration of the builtins are:
+     ...
+   }
+ 
+-A complete enumeration of the builtins are:
++Clang provides the following checked arithmetic builtins:
  
  .. code-block:: c
  
