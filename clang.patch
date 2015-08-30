@@ -55,17 +55,18 @@ index f9ec004..51ce4cb 100644
  BUILTIN(__builtin_uaddl_overflow, "bULiCULiCULi*", "n")
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
-index 7b21e10..2bdd8ca 100644
+index 7b21e10..b7108e7 100644
 --- a/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/include/clang/Basic/DiagnosticSemaKinds.td
-@@ -6192,6 +6192,11 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
+@@ -6192,6 +6192,12 @@ def warn_atomic_op_has_invalid_memory_order : Warning<
    "memory order argument to atomic operation is invalid">,
    InGroup<DiagGroup<"atomic-memory-ordering">>;
  
 +def err_overflow_builtin_must_be_int : Error<
 +  "operand argument to overflow builtin must be an integer (%0 invalid)">;
 +def err_overflow_builtin_must_be_ptr_int : Error<
-+  "result argument to overflow builtin must be a pointer to integer (%0 invalid)">;
++  "result argument to overflow builtin must be a pointer to integer "
++  "(%0 invalid)">;
 +
  def err_atomic_load_store_uses_lib : Error<
    "atomic %select{load|store}0 requires runtime support that is not "
