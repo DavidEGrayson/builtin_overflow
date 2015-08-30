@@ -71,10 +71,10 @@ index 7b21e10..2bdd8ca 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 955dcfc..0b3b96a 100644
+index 955dcfc..5bd465d 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
-@@ -256,6 +256,50 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
+@@ -256,6 +256,49 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -85,20 +85,19 @@ index 955dcfc..0b3b96a 100644
 +// This function operates on objects of type std::pair<unsigned, bool>, where
 +// the first element is the bit width of an integer type and the second element
 +// is true if the integer type is signed.
-+static std::pair<unsigned, bool> EncompassingIntegerType(
-+  std::vector<std::pair<unsigned, bool>> Types)
-+{
++static std::pair<unsigned, bool>
++EncompassingIntegerType(std::vector<std::pair<unsigned, bool>> Types) {
 +  std::pair<unsigned, bool> EncType(0, false);
 +
 +  // If any of the given types is signed, we must return a signed type.
-+  for(const auto &Type : Types) {
++  for (const auto &Type : Types) {
 +    EncType.second |= Type.second;
 +  }
 +
 +  // The encompassing type must have a width greater than or equal to the width
 +  // of the specified types.  If the encompassing type is signed, its width must
 +  // be strictly greater than the width of any unsigned types given.
-+  for(const auto &Type : Types) {
++  for (const auto &Type : Types) {
 +    unsigned width = Type.first + (EncType.second && !Type.second);
 +    if (EncType.first < width) {
 +      EncType.first = width;
@@ -108,9 +107,9 @@ index 955dcfc..0b3b96a 100644
 +  return EncType;
 +}
 +
-+static std::pair<unsigned, bool> IntegerWidthAndSignedness(const clang::ASTContext &context,
-+                                                           const clang::QualType Type)
-+{
++static std::pair<unsigned, bool>
++IntegerWidthAndSignedness(const clang::ASTContext &context,
++                          const clang::QualType Type) {
 +  assert(Type->isIntegerType());
 +  std::pair<unsigned, bool> Result;
 +  Result.second = Type->isSignedIntegerType();
@@ -125,7 +124,7 @@ index 955dcfc..0b3b96a 100644
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1574,105 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1573,105 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -139,36 +138,37 @@ index 955dcfc..0b3b96a 100644
 +
 +    clang::QualType XQTy = XArg->getType();
 +    clang::QualType YQTy = YArg->getType();
-+    clang::QualType RQTy = RArg->getType()
-+      ->getAs<PointerType>()->getPointeeType();
++    clang::QualType RQTy =
++        RArg->getType()->getAs<PointerType>()->getPointeeType();
 +
-+    std::pair<unsigned, bool> XITy = IntegerWidthAndSignedness(CGM.getContext(), XQTy);
-+    std::pair<unsigned, bool> YITy = IntegerWidthAndSignedness(CGM.getContext(), YQTy);
-+    std::pair<unsigned, bool> RITy = IntegerWidthAndSignedness(CGM.getContext(), RQTy);
-+    std::pair<unsigned, bool> EITy = EncompassingIntegerType({XITy, YITy, RITy});
++    std::pair<unsigned, bool> XITy =
++        IntegerWidthAndSignedness(CGM.getContext(), XQTy);
++    std::pair<unsigned, bool> YITy =
++        IntegerWidthAndSignedness(CGM.getContext(), YQTy);
++    std::pair<unsigned, bool> RITy =
++        IntegerWidthAndSignedness(CGM.getContext(), RQTy);
++    std::pair<unsigned, bool> EITy =
++        EncompassingIntegerType({XITy, YITy, RITy});
 +
 +    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.first);
 +    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
 +
 +    bool Signed = EITy.second;
 +    llvm::Intrinsic::ID IntrinsicId;
-+    switch(BuiltinID)
-+    {
-+    default: llvm_unreachable("Unknown security overflow builtin id.");
++    switch (BuiltinID) {
++    default:
++      llvm_unreachable("Unknown security overflow builtin id.");
 +    case Builtin::BI__builtin_add_overflow:
-+      IntrinsicId = Signed
-+        ? llvm::Intrinsic::sadd_with_overflow
-+        : llvm::Intrinsic::uadd_with_overflow;
++      IntrinsicId = Signed ? llvm::Intrinsic::sadd_with_overflow
++                           : llvm::Intrinsic::uadd_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_sub_overflow:
-+      IntrinsicId = Signed
-+        ? llvm::Intrinsic::ssub_with_overflow
-+        : llvm::Intrinsic::usub_with_overflow;
++      IntrinsicId = Signed ? llvm::Intrinsic::ssub_with_overflow
++                           : llvm::Intrinsic::usub_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_mul_overflow:
-+      IntrinsicId = Signed
-+        ? llvm::Intrinsic::smul_with_overflow
-+        : llvm::Intrinsic::umul_with_overflow;
++      IntrinsicId = Signed ? llvm::Intrinsic::smul_with_overflow
++                           : llvm::Intrinsic::umul_with_overflow;
 +      break;
 +    }
 +
@@ -192,8 +192,7 @@ index 955dcfc..0b3b96a 100644
 +    llvm::Value *Overflow, *Q;
 +    Q = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Overflow);
 +
-+    if (EITy.first > RITy.first)
-+    {
++    if (EITy.first > RITy.first) {
 +      // The encompassing type is wider than the result type, so we need to
 +      // truncate it.
 +      llvm::Value *QTrunc = Builder.CreateTrunc(Q, RLTy);
@@ -212,8 +211,8 @@ index 955dcfc..0b3b96a 100644
 +      Q = QTrunc;
 +    }
 +
-+    llvm::Type *OutputLTy = cast<llvm::PointerType>(OutPtr.first->getType())
-+      ->getElementType();
++    llvm::Type *OutputLTy =
++        cast<llvm::PointerType>(OutPtr.first->getType())->getElementType();
 +
 +    // If the third argument is a pointer to a bool, that is
 +    // represented in the LLVM IR as an i8*, but we currently have an
@@ -232,10 +231,10 @@ index 955dcfc..0b3b96a 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index 92c9456..dfbbf19 100644
+index 92c9456..10a5a23 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
-@@ -112,6 +112,36 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
+@@ -112,6 +112,35 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
    return false;
  }
  
@@ -244,13 +243,12 @@ index 92c9456..dfbbf19 100644
 +    return true;
 +
 +  // First two arguments should be integers.
-+  for (unsigned i = 0; i < 2; i++)
-+  {
++  for (unsigned i = 0; i < 2; i++) {
 +    Expr *Arg = TheCall->getArg(i);
 +    QualType Ty = Arg->getType();
 +    if (!Ty->isIntegerType()) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_int)
-+        << Ty << Arg->getSourceRange();
++          << Ty << Arg->getSourceRange();
 +      return true;
 +    }
 +  }
@@ -262,7 +260,7 @@ index 92c9456..dfbbf19 100644
 +    const PointerType *PtrTy = Ty->getAs<PointerType>();
 +    if (!(PtrTy && PtrTy->getPointeeType()->isIntegerType())) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_ptr_int)
-+        << Ty << Arg->getSourceRange();
++          << Ty << Arg->getSourceRange();
 +    }
 +  }
 +
@@ -272,7 +270,7 @@ index 92c9456..dfbbf19 100644
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -454,6 +484,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
+@@ -454,6 +483,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
@@ -286,159 +284,164 @@ index 92c9456..dfbbf19 100644
    case Builtin::BI__builtin_operator_delete:
      if (!getLangOpts().CPlusPlus) {
 diff --git a/test/CodeGen/builtins-overflow.c b/test/CodeGen/builtins-overflow.c
-index 5c5500d..67144b1 100644
+index 5c5500d..9dbfd55 100644
 --- a/test/CodeGen/builtins-overflow.c
 +++ b/test/CodeGen/builtins-overflow.c
-@@ -11,6 +11,153 @@ extern unsigned long long UnsignedLongLongErrorCode;
+@@ -11,6 +11,158 @@ extern unsigned long long UnsignedLongLongErrorCode;
  extern int IntErrorCode;
  extern long LongErrorCode;
  extern long long LongLongErrorCode;
 +void overflowed(void);
 +
 +unsigned test_add_overflow_uint_uint_uint(unsigned x, unsigned y) {
-+// CHECK: @test_add_overflow_uint_uint_uint
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    unsigned r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_add_overflow_uint_uint_uint
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  unsigned r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
 +int test_add_overflow_int_int_int(int x, int y) {
-+// CHECK: @test_add_overflow_int_int_int
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    int r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_add_overflow_int_int_int
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  int r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
 +unsigned test_sub_overflow_uint_uint_uint(unsigned x, unsigned y) {
-+// CHECK: @test_sub_overflow_uint_uint_uint
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    unsigned r;
-+    if (__builtin_sub_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_sub_overflow_uint_uint_uint
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  unsigned r;
++  if (__builtin_sub_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
 +int test_sub_overflow_int_int_int(int x, int y) {
-+// CHECK: @test_sub_overflow_int_int_int
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    int r;
-+    if (__builtin_sub_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_sub_overflow_int_int_int
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  int r;
++  if (__builtin_sub_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
-+
 +unsigned test_mul_overflow_uint_uint_uint(unsigned x, unsigned y) {
-+// CHECK: @test_mul_overflow_uint_uint_uint
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    unsigned r;
-+    if (__builtin_mul_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_mul_overflow_uint_uint_uint
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  unsigned r;
++  if (__builtin_mul_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
 +int test_mul_overflow_int_int_int(int x, int y) {
-+// CHECK: @test_mul_overflow_int_int_int
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    int r;
-+    if (__builtin_mul_overflow(x, y, &r)) overflowed();
-+    return r;
++  // CHECK: @test_mul_overflow_int_int_int
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  int r;
++  if (__builtin_mul_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
-+int test_add_overflow_uint_int_int(unsigned x, int y)
-+{
-+// CHECK: @test_add_overflow_uint_int_int
-+// CHECK: [[XE:%.+]] = zext i32 %{{.+}} to i33
-+// CHECK: [[YE:%.+]] = sext i32 %{{.+}} to i33
-+// CHECK: [[S:%.+]] = call { i33, i1 } @llvm.sadd.with.overflow.i33(i33 [[XE]], i33 [[YE]])
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i33, i1 } [[S]], 0
-+// CHECK-DAG: [[C1:%.+]] = extractvalue { i33, i1 } [[S]], 1
-+// CHECK: [[QT:%.+]] = trunc i33 [[Q]] to i32
-+// CHECK: [[QTE:%.+]] = sext i32 [[QT]] to i33
-+// CHECK: [[C2:%.+]] = icmp ne i33 [[Q]], [[QTE]]
-+// CHECK: [[C3:%.+]] = or i1 [[C1]], [[C2]]
-+// CHECK: store i32 [[QT]], i32* %r
-+// CHECK: br i1 [[C3]]
-+    int r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++int test_add_overflow_uint_int_int(unsigned x, int y) {
++  // CHECK: @test_add_overflow_uint_int_int
++  // CHECK: [[XE:%.+]] = zext i32 %{{.+}} to i33
++  // CHECK: [[YE:%.+]] = sext i32 %{{.+}} to i33
++  // CHECK: [[S:%.+]] = call { i33, i1 } @llvm.sadd.with.overflow.i33(i33 [[XE]], i33 [[YE]])
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i33, i1 } [[S]], 0
++  // CHECK-DAG: [[C1:%.+]] = extractvalue { i33, i1 } [[S]], 1
++  // CHECK: [[QT:%.+]] = trunc i33 [[Q]] to i32
++  // CHECK: [[QTE:%.+]] = sext i32 [[QT]] to i33
++  // CHECK: [[C2:%.+]] = icmp ne i33 [[Q]], [[QTE]]
++  // CHECK: [[C3:%.+]] = or i1 [[C1]], [[C2]]
++  // CHECK: store i32 [[QT]], i32* %r
++  // CHECK: br i1 [[C3]]
++  int r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
-+_Bool test_add_overflow_uint_uint_bool(unsigned x, unsigned y)
-+{
-+// CHECK: @test_add_overflow_uint_uint_bool
-+// CHECK-NOT: ext
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-DAG: [[C1:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK: [[QT:%.+]] = trunc i32 [[Q]] to i1
-+// CHECK: [[QTE:%.+]] = zext i1 [[QT]] to i32
-+// CHECK: [[C2:%.+]] = icmp ne i32 [[Q]], [[QTE]]
-+// CHECK: [[C3:%.+]] = or i1 [[C1]], [[C2]]
-+// CHECK: [[QT2:%.+]] = zext i1 [[QT]] to i8
-+// CHECK: store i8 [[QT2]], i8* %r
-+// CHECK: br i1 [[C3]]
-+    _Bool r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++_Bool test_add_overflow_uint_uint_bool(unsigned x, unsigned y) {
++  // CHECK: @test_add_overflow_uint_uint_bool
++  // CHECK-NOT: ext
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %{{.+}}, i32 %{{.+}})
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK-DAG: [[C1:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK: [[QT:%.+]] = trunc i32 [[Q]] to i1
++  // CHECK: [[QTE:%.+]] = zext i1 [[QT]] to i32
++  // CHECK: [[C2:%.+]] = icmp ne i32 [[Q]], [[QTE]]
++  // CHECK: [[C3:%.+]] = or i1 [[C1]], [[C2]]
++  // CHECK: [[QT2:%.+]] = zext i1 [[QT]] to i8
++  // CHECK: store i8 [[QT2]], i8* %r
++  // CHECK: br i1 [[C3]]
++  _Bool r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
-+unsigned test_add_overflow_bool_bool_uint(_Bool x, _Bool y)
-+{
-+// CHECK: @test_add_overflow_bool_bool_uint
-+// CHECK: [[XE:%.+]] = zext i1 %{{.+}} to i32
-+// CHECK: [[YE:%.+]] = zext i1 %{{.+}} to i32
-+// CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 [[XE]], i32 [[YE]])
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
-+// CHECK: store i32 [[Q]], i32* %r
-+// CHECK: br i1 [[C]]
-+    unsigned r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++unsigned test_add_overflow_bool_bool_uint(_Bool x, _Bool y) {
++  // CHECK: @test_add_overflow_bool_bool_uint
++  // CHECK: [[XE:%.+]] = zext i1 %{{.+}} to i32
++  // CHECK: [[YE:%.+]] = zext i1 %{{.+}} to i32
++  // CHECK: [[S:%.+]] = call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 [[XE]], i32 [[YE]])
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i32, i1 } [[S]], 0
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i32, i1 } [[S]], 1
++  // CHECK: store i32 [[Q]], i32* %r
++  // CHECK: br i1 [[C]]
++  unsigned r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
 +
-+_Bool test_add_overflow_bool_bool_bool(_Bool x, _Bool y)
-+{
-+// CHECK: @test_add_overflow_bool_bool_bool
-+// CHECK: [[S:%.+]] = call { i1, i1 } @llvm.uadd.with.overflow.i1(i1 %{{.+}}, i1 %{{.+}})
-+// CHECK-DAG: [[Q:%.+]] = extractvalue { i1, i1 } [[S]], 0
-+// CHECK-DAG: [[C:%.+]] = extractvalue { i1, i1 } [[S]], 1
-+// CHECK: [[QT2:%.+]] = zext i1 [[Q]] to i8
-+// CHECK: store i8 [[QT2]], i8* %r
-+// CHECK: br i1 [[C]]
-+    _Bool r;
-+    if (__builtin_add_overflow(x, y, &r)) overflowed();
-+    return r;
++_Bool test_add_overflow_bool_bool_bool(_Bool x, _Bool y) {
++  // CHECK: @test_add_overflow_bool_bool_bool
++  // CHECK: [[S:%.+]] = call { i1, i1 } @llvm.uadd.with.overflow.i1(i1 %{{.+}}, i1 %{{.+}})
++  // CHECK-DAG: [[Q:%.+]] = extractvalue { i1, i1 } [[S]], 0
++  // CHECK-DAG: [[C:%.+]] = extractvalue { i1, i1 } [[S]], 1
++  // CHECK: [[QT2:%.+]] = zext i1 [[Q]] to i8
++  // CHECK: store i8 [[QT2]], i8* %r
++  // CHECK: br i1 [[C]]
++  _Bool r;
++  if (__builtin_add_overflow(x, y, &r))
++    overflowed();
++  return r;
 +}
  
  unsigned test_uadd_overflow(unsigned x, unsigned y) {
