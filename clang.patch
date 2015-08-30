@@ -72,10 +72,10 @@ index 7b21e10..b7108e7 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 955dcfc..5bd465d 100644
+index 955dcfc..4f93c2e 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
-@@ -256,6 +256,49 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
+@@ -256,6 +256,47 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -88,44 +88,42 @@ index 955dcfc..5bd465d 100644
 +// is true if the integer type is signed.
 +static std::pair<unsigned, bool>
 +EncompassingIntegerType(std::vector<std::pair<unsigned, bool>> Types) {
-+  std::pair<unsigned, bool> EncType(0, false);
++  assert(Types.size() > 0 && "Empty list of types.");
 +
 +  // If any of the given types is signed, we must return a signed type.
++  bool Signed = false;
 +  for (const auto &Type : Types) {
-+    EncType.second |= Type.second;
++    Signed |= Type.second;
 +  }
 +
 +  // The encompassing type must have a width greater than or equal to the width
-+  // of the specified types.  If the encompassing type is signed, its width must
-+  // be strictly greater than the width of any unsigned types given.
++  // of the specified types.  Aditionally, if the encompassing type is signed,
++  // its width must be strictly greater than the width of any unsigned types
++  // given.
++  unsigned Width = 0;
 +  for (const auto &Type : Types) {
-+    unsigned width = Type.first + (EncType.second && !Type.second);
-+    if (EncType.first < width) {
-+      EncType.first = width;
++    unsigned MinWidth = Type.first + (Signed && !Type.second);
++    if (Width < MinWidth) {
++      Width = MinWidth;
 +    }
 +  }
 +
-+  return EncType;
++  return {Width, Signed};
 +}
 +
 +static std::pair<unsigned, bool>
 +IntegerWidthAndSignedness(const clang::ASTContext &context,
 +                          const clang::QualType Type) {
-+  assert(Type->isIntegerType());
-+  std::pair<unsigned, bool> Result;
-+  Result.second = Type->isSignedIntegerType();
-+  if (Type->isBooleanType()) {
-+    Result.first = 1;
-+  } else {
-+    Result.first = context.getTypeInfo(Type).Width;
-+  }
-+  return Result;
++  assert(Type->isIntegerType() && "Given type is not an integer.");
++  unsigned Width = Type->isBooleanType() ? 1 : context.getTypeInfo(Type).Width;
++  bool Signed = Type->isSignedIntegerType();
++  return {Width, Signed};
 +}
 +
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1573,105 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
+@@ -1530,6 +1571,101 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -142,14 +140,10 @@ index 955dcfc..5bd465d 100644
 +    clang::QualType RQTy =
 +        RArg->getType()->getAs<PointerType>()->getPointeeType();
 +
-+    std::pair<unsigned, bool> XITy =
-+        IntegerWidthAndSignedness(CGM.getContext(), XQTy);
-+    std::pair<unsigned, bool> YITy =
-+        IntegerWidthAndSignedness(CGM.getContext(), YQTy);
-+    std::pair<unsigned, bool> RITy =
-+        IntegerWidthAndSignedness(CGM.getContext(), RQTy);
-+    std::pair<unsigned, bool> EITy =
-+        EncompassingIntegerType({XITy, YITy, RITy});
++    auto XITy = IntegerWidthAndSignedness(CGM.getContext(), XQTy);
++    auto YITy = IntegerWidthAndSignedness(CGM.getContext(), YQTy);
++    auto RITy = IntegerWidthAndSignedness(CGM.getContext(), RQTy);
++    auto EITy = EncompassingIntegerType({XITy, YITy, RITy});
 +
 +    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.first);
 +    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
@@ -232,7 +226,7 @@ index 955dcfc..5bd465d 100644
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
 diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index 92c9456..10a5a23 100644
+index 92c9456..7c28e14 100644
 --- a/lib/Sema/SemaChecking.cpp
 +++ b/lib/Sema/SemaChecking.cpp
 @@ -112,6 +112,35 @@ static bool SemaBuiltinAddressof(Sema &S, CallExpr *TheCall) {
@@ -244,8 +238,8 @@ index 92c9456..10a5a23 100644
 +    return true;
 +
 +  // First two arguments should be integers.
-+  for (unsigned i = 0; i < 2; i++) {
-+    Expr *Arg = TheCall->getArg(i);
++  for (unsigned I = 0; I < 2; ++I) {
++    Expr *Arg = TheCall->getArg(I);
 +    QualType Ty = Arg->getType();
 +    if (!Ty->isIntegerType()) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_int)
@@ -258,7 +252,7 @@ index 92c9456..10a5a23 100644
 +  {
 +    Expr *Arg = TheCall->getArg(2);
 +    QualType Ty = Arg->getType();
-+    const PointerType *PtrTy = Ty->getAs<PointerType>();
++    const auto *PtrTy = Ty->getAs<PointerType>();
 +    if (!(PtrTy && PtrTy->getPointeeType()->isIntegerType())) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_ptr_int)
 +          << Ty << Arg->getSourceRange();
