@@ -71,7 +71,7 @@ index 7b21e10..2bdd8ca 100644
    "atomic %select{load|store}0 requires runtime support that is not "
    "available for this target">;
 diff --git a/lib/CodeGen/CGBuiltin.cpp b/lib/CodeGen/CGBuiltin.cpp
-index 955dcfc..6c950e8 100644
+index 955dcfc..0b3b96a 100644
 --- a/lib/CodeGen/CGBuiltin.cpp
 +++ b/lib/CodeGen/CGBuiltin.cpp
 @@ -256,6 +256,50 @@ static llvm::Value *EmitOverflowIntrinsic(CodeGenFunction &CGF,
@@ -91,15 +91,15 @@ index 955dcfc..6c950e8 100644
 +  std::pair<unsigned, bool> EncType(0, false);
 +
 +  // If any of the given types is signed, we must return a signed type.
-+  for(auto it = Types.begin(); it != Types.end(); ++it) {
-+    EncType.second |= it->second;
++  for(const auto &Type : Types) {
++    EncType.second |= Type.second;
 +  }
 +
 +  // The encompassing type must have a width greater than or equal to the width
 +  // of the specified types.  If the encompassing type is signed, its width must
 +  // be strictly greater than the width of any unsigned types given.
-+  for(auto it = Types.begin(); it != Types.end(); ++it) {
-+    unsigned width = it->first + (EncType.second && !it->second);
++  for(const auto &Type : Types) {
++    unsigned width = Type.first + (EncType.second && !Type.second);
 +    if (EncType.first < width) {
 +      EncType.first = width;
 +    }
