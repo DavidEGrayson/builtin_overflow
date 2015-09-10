@@ -67,8 +67,8 @@ Index: include/clang/Basic/DiagnosticSemaKinds.td
 +def err_overflow_builtin_must_be_int : Error<
 +  "operand argument to overflow builtin must be an integer (%0 invalid)">;
 +def err_overflow_builtin_must_be_ptr_int : Error<
-+  "result argument to overflow builtin must be a pointer to integer "
-+  "(%0 invalid)">;
++  "result argument to overflow builtin must be a pointer "
++  "to a non-const integer (%0 invalid)">;
 +
  def err_atomic_load_store_uses_lib : Error<
    "atomic %select{load|store}0 requires runtime support that is not "
@@ -227,7 +227,7 @@ Index: lib/Sema/SemaChecking.cpp
 ===================================================================
 --- lib/Sema/SemaChecking.cpp	(revision 246397)
 +++ lib/Sema/SemaChecking.cpp	(working copy)
-@@ -112,6 +112,35 @@
+@@ -112,6 +112,36 @@
    return false;
  }
  
@@ -246,12 +246,13 @@ Index: lib/Sema/SemaChecking.cpp
 +    }
 +  }
 +
-+  // Third argument should be a pointer to an integer.
++  // Third argument should be a pointer to a non-const integer.
 +  {
 +    Expr *Arg = TheCall->getArg(2);
 +    QualType Ty = Arg->getType();
 +    const auto *PtrTy = Ty->getAs<PointerType>();
-+    if (!(PtrTy && PtrTy->getPointeeType()->isIntegerType())) {
++    if (!(PtrTy && PtrTy->getPointeeType()->isIntegerType() &&
++          !PtrTy->getPointeeType().isConstQualified())) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_ptr_int)
 +          << Ty << Arg->getSourceRange();
 +    }
@@ -263,7 +264,7 @@ Index: lib/Sema/SemaChecking.cpp
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -454,6 +483,12 @@
+@@ -454,6 +484,12 @@
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
@@ -294,9 +295,9 @@ Index: test/CodeGen/builtins-overflow-error.c
 +
 +  __builtin_add_overflow(c, 1, &r);  // expected-error {{operand argument to overflow builtin must be an integer ('const char *' invalid)}}
 +  __builtin_add_overflow(1, c, &r);  // expected-error {{operand argument to overflow builtin must be an integer ('const char *' invalid)}}
-+  __builtin_add_overflow(1, 1, 3);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('int' invalid)}}
-+  __builtin_add_overflow(1, 1, &f);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('float *' invalid)}}
-+  __builtin_add_overflow(1, 1, &q);  // expected-error {{result argument to overflow builtin must be a pointer to a non-const integer}}
++  __builtin_add_overflow(1, 1, 3);  // expected-error {{result argument to overflow builtin must be a pointer to a non-const integer ('int' invalid)}}
++  __builtin_add_overflow(1, 1, &f);  // expected-error {{result argument to overflow builtin must be a pointer to a non-const integer ('float *' invalid)}}
++  __builtin_add_overflow(1, 1, &q);  // expected-error {{result argument to overflow builtin must be a pointer to a non-const integer ('const unsigned int *' invalid)}}
 +}
 Index: test/CodeGen/builtins-overflow.c
 ===================================================================
