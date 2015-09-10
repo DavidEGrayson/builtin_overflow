@@ -125,7 +125,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1530,6 +1571,101 @@
+@@ -1530,6 +1571,97 @@
      CarryOutStore->setAlignment(CarryOutPtr.second);
      return RValue::get(Sum2);
    }
@@ -140,7 +140,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    clang::QualType XQTy = XArg->getType();
 +    clang::QualType YQTy = YArg->getType();
 +    clang::QualType RQTy =
-+        RArg->getType()->getAs<PointerType>()->getPointeeType();
++        RArg->getType()->castAs<PointerType>()->getPointeeType();
 +
 +    auto XITy = IntegerWidthAndSignedness(CGM.getContext(), XQTy);
 +    auto YITy = IntegerWidthAndSignedness(CGM.getContext(), YQTy);
@@ -173,7 +173,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    llvm::Value *Y = EmitScalarExpr(YArg);
 +    std::pair<llvm::Value *, unsigned> OutPtr = EmitPointerWithAlignment(RArg);
 +
-+    // Extend each argument to the encompassing type.
++    // Extend each operand to the encompassing type.
 +    if (XQTy->isSignedIntegerType()) {
 +      X = Builder.CreateSExt(X, ELTy);
 +    } else {
@@ -194,10 +194,10 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +      // truncate it.
 +      llvm::Value *QTrunc = Builder.CreateTrunc(Q, RLTy);
 +
-+      // To see if the truncation caused an overflow, we will extend it
-+      // it and then compare it to the original result.
++      // To see if the truncation caused an overflow, we will extend
++      // the result and then compare it to the original result.
 +      llvm::Value *QTruncExt;
-+      if (RITy.second) {
++      if (RQTy->isSignedIntegerType()) {
 +        QTruncExt = Builder.CreateSExt(QTrunc, ELTy);
 +      } else {
 +        QTruncExt = Builder.CreateZExt(QTrunc, ELTy);
@@ -208,15 +208,11 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +      Q = QTrunc;
 +    }
 +
-+    llvm::Type *OutputLTy =
-+        cast<llvm::PointerType>(OutPtr.first->getType())->getElementType();
-+
-+    // If the third argument is a pointer to a bool, that is
-+    // represented in the LLVM IR as an i8*, but we currently have an
-+    // i1, so we need to zero-extend from i1 to i8.
-+    if (RLTy->isIntegerTy(1)) {
-+      Q = Builder.CreateZExt(Q, OutputLTy);
-+    }
++    // Some types (like _Bool) are stored in memory using a larger
++    // number of bits than their natural representation in LLVM IR, so
++    // we have to extend them before storing.
++    unsigned Width = CGM.getContext().getTypeInfo(RQTy).Width;
++    Q = Builder.CreateZExt(Q, Builder.getIntNTy(Width));
 +
 +    // Finally, store the result using the pointer.
 +    Builder.CreateAlignedStore(Q, OutPtr.first, OutPtr.second);
@@ -284,13 +280,14 @@ Index: test/CodeGen/builtins-overflow-error.c
 ===================================================================
 --- test/CodeGen/builtins-overflow-error.c	(nonexistent)
 +++ test/CodeGen/builtins-overflow-error.c	(working copy)
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,17 @@
 +// RUN: %clang_cc1 -Wall -Werror -fsyntax-only -verify %s
 +
 +void test(void) {
 +  unsigned r;
 +  const char * c;
 +  float f;
++  const unsigned q;
 +
 +  __builtin_add_overflow();  // expected-error {{too few arguments to function call, expected 3, have 0}}
 +  __builtin_add_overflow(1, 1, 1, 1);  // expected-error {{too many arguments to function call, expected 3, have 4}}
@@ -299,6 +296,7 @@ Index: test/CodeGen/builtins-overflow-error.c
 +  __builtin_add_overflow(1, c, &r);  // expected-error {{operand argument to overflow builtin must be an integer ('const char *' invalid)}}
 +  __builtin_add_overflow(1, 1, 3);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('int' invalid)}}
 +  __builtin_add_overflow(1, 1, &f);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('float *' invalid)}}
++  __builtin_add_overflow(1, 1, &q);  // expected-error {{result argument to overflow builtin must be a pointer to a non-const integer}}
 +}
 Index: test/CodeGen/builtins-overflow.c
 ===================================================================
