@@ -284,7 +284,7 @@ Index: test/CodeGen/builtins-overflow-error.c
 ===================================================================
 --- test/CodeGen/builtins-overflow-error.c	(nonexistent)
 +++ test/CodeGen/builtins-overflow-error.c	(working copy)
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,15 @@
 +// RUN: %clang_cc1 -Wall -Werror -fsyntax-only -verify %s
 +
 +void test(void) {
@@ -300,7 +300,6 @@ Index: test/CodeGen/builtins-overflow-error.c
 +  __builtin_add_overflow(1, 1, 3);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('int' invalid)}}
 +  __builtin_add_overflow(1, 1, &f);  // expected-error {{result argument to overflow builtin must be a pointer to integer ('float *' invalid)}}
 +}
-+
 Index: test/CodeGen/builtins-overflow.c
 ===================================================================
 --- test/CodeGen/builtins-overflow.c	(revision 246397)
