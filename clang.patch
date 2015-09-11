@@ -1,6 +1,6 @@
 Index: docs/LanguageExtensions.rst
 ===================================================================
---- docs/LanguageExtensions.rst	(revision 247242)
+--- docs/LanguageExtensions.rst	(revision 247244)
 +++ docs/LanguageExtensions.rst	(working copy)
 @@ -1679,7 +1679,7 @@
    errorcode_t security_critical_application(...) {
@@ -44,7 +44,7 @@ Index: docs/LanguageExtensions.rst
  __c11_atomic builtins
 Index: include/clang/Basic/Builtins.def
 ===================================================================
---- include/clang/Basic/Builtins.def	(revision 247242)
+--- include/clang/Basic/Builtins.def	(revision 247244)
 +++ include/clang/Basic/Builtins.def	(working copy)
 @@ -1217,6 +1217,9 @@
  BUILTIN(__builtin_subcll, "ULLiULLiCULLiCULLiCULLi*", "n")
@@ -58,7 +58,7 @@ Index: include/clang/Basic/Builtins.def
  BUILTIN(__builtin_uaddll_overflow, "bULLiCULLiCULLi*", "n")
 Index: include/clang/Basic/DiagnosticSemaKinds.td
 ===================================================================
---- include/clang/Basic/DiagnosticSemaKinds.td	(revision 247242)
+--- include/clang/Basic/DiagnosticSemaKinds.td	(revision 247244)
 +++ include/clang/Basic/DiagnosticSemaKinds.td	(working copy)
 @@ -6199,6 +6199,12 @@
    "memory order argument to atomic operation is invalid">,
@@ -75,7 +75,7 @@ Index: include/clang/Basic/DiagnosticSemaKinds.td
    "available for this target">;
 Index: lib/CodeGen/CGBuiltin.cpp
 ===================================================================
---- lib/CodeGen/CGBuiltin.cpp	(revision 247242)
+--- lib/CodeGen/CGBuiltin.cpp	(revision 247244)
 +++ lib/CodeGen/CGBuiltin.cpp	(working copy)
 @@ -278,6 +278,47 @@
    return CGF.Builder.CreateExtractValue(Tmp, 0);
@@ -125,7 +125,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
  RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
                                          unsigned BuiltinID, const CallExpr *E,
                                          ReturnValueSlot ReturnValue) {
-@@ -1541,6 +1582,97 @@
+@@ -1541,6 +1582,96 @@
      Builder.CreateStore(CarryOut, CarryOutPtr);
      return RValue::get(Sum2);
    }
@@ -171,7 +171,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +
 +    llvm::Value *X = EmitScalarExpr(XArg);
 +    llvm::Value *Y = EmitScalarExpr(YArg);
-+    std::pair<llvm::Value *, unsigned> OutPtr = EmitPointerWithAlignment(RArg);
++    Address OutPtr = EmitPointerWithAlignment(RArg);
 +
 +    // Extend each operand to the encompassing type.
 +    if (XQTy->isSignedIntegerType()) {
@@ -211,11 +211,10 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    // Some types (like _Bool) are stored in memory using a larger
 +    // number of bits than their natural representation in LLVM IR, so
 +    // we have to extend them before storing.
-+    unsigned Width = CGM.getContext().getTypeInfo(RQTy).Width;
-+    Q = Builder.CreateZExt(Q, Builder.getIntNTy(Width));
++    Q = Builder.CreateZExt(Q, OutPtr.getElementType());
 +
 +    // Finally, store the result using the pointer.
-+    Builder.CreateAlignedStore(Q, OutPtr.first, OutPtr.second);
++    Builder.CreateStore(Q, OutPtr);
 +
 +    return RValue::get(Overflow);
 +  }
@@ -225,7 +224,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
    case Builtin::BI__builtin_uaddll_overflow:
 Index: lib/Sema/SemaChecking.cpp
 ===================================================================
---- lib/Sema/SemaChecking.cpp	(revision 247242)
+--- lib/Sema/SemaChecking.cpp	(revision 247244)
 +++ lib/Sema/SemaChecking.cpp	(working copy)
 @@ -112,6 +112,36 @@
    return false;
@@ -301,7 +300,7 @@ Index: test/CodeGen/builtins-overflow-error.c
 +}
 Index: test/CodeGen/builtins-overflow.c
 ===================================================================
---- test/CodeGen/builtins-overflow.c	(revision 247242)
+--- test/CodeGen/builtins-overflow.c	(revision 247244)
 +++ test/CodeGen/builtins-overflow.c	(working copy)
 @@ -11,7 +11,159 @@
  extern int IntErrorCode;
