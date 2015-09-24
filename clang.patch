@@ -204,7 +204,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    }
 +
 +    // Finally, store the result using the pointer.
-+    Q = Builder.CreateZExt(Q, OutPtr.getElementType());
++    Q = EmitToMemory(Q, RQTy);
 +    Builder.CreateStore(Q, OutPtr);
 +
 +    return RValue::get(Overflow);
