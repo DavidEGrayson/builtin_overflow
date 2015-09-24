@@ -26,16 +26,18 @@ Index: docs/LanguageExtensions.rst
    bool __builtin_uadd_overflow  (unsigned x, unsigned y, unsigned *sum);
    bool __builtin_uaddl_overflow (unsigned long x, unsigned long y, unsigned long *sum);
    bool __builtin_uaddll_overflow(unsigned long long x, unsigned long long y, unsigned long long *sum);
-@@ -1709,7 +1712,15 @@
+@@ -1709,7 +1712,17 @@
    bool __builtin_smull_overflow (long x, long y, long *prod);
    bool __builtin_smulll_overflow(long long x, long long y, long long *prod);
  
-+Each builtin performs the specified mathematical operation on the first two
-+arguments.  If the mathematically-correct result can be stored in the variable
-+pointed to by the third argument, then the result is stored there and the
-+function returns 0.  Otherwise, the bits of the result are truncated before
-+being stored there, and the function returns 1.  The behavior of these builtins
-+is well-defined for all argument values.
++Each builtin performs the specified mathematical operation on the
++first two arguments and stores the result in the third argument.  If
++possible, the result will be equal to mathematically-correct result
++and the builtin will return 0.  Otherwise, the builtin will return
++1 and the result will be equal to the unique value that is equivalent
++to the mathematically-correct result modulo two raised to the *k*
++power, where *k* is the number of bits in the result type.  The
++behavior of these builtins is well-defined for all argument values.
  
 +The first three builtins can operate on any integer types (including booleans).
 +
@@ -77,10 +79,26 @@ Index: lib/CodeGen/CGBuiltin.cpp
 ===================================================================
 --- lib/CodeGen/CGBuiltin.cpp	(revision 248284)
 +++ lib/CodeGen/CGBuiltin.cpp	(working copy)
-@@ -278,6 +278,47 @@
+@@ -278,6 +278,54 @@
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
++namespace {
++  struct WidthAndSignedness {
++    unsigned Width;
++    bool Signed;
++  };
++}
++
++static WidthAndSignedness
++getIntegerWidthAndSignedness(const clang::ASTContext &context,
++                             const clang::QualType Type) {
++  assert(Type->isIntegerType() && "Given type is not an integer.");
++  unsigned Width = Type->isBooleanType() ? 1 : context.getTypeInfo(Type).Width;
++  bool Signed = Type->isSignedIntegerType();
++  return {Width, Signed};
++}
++
 +// Given one or more integer types, this function produces an integer type that
 +// encompasses them: any value in one of the given types could be expressed in
 +// the encompassing type.
@@ -88,14 +106,14 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +// This function operates on objects of type std::pair<unsigned, bool>, where
 +// the first element is the bit width of an integer type and the second element
 +// is true if the integer type is signed.
-+static std::pair<unsigned, bool>
-+EncompassingIntegerType(std::vector<std::pair<unsigned, bool>> Types) {
++static struct WidthAndSignedness
++EncompassingIntegerType(ArrayRef<struct WidthAndSignedness> Types) {
 +  assert(Types.size() > 0 && "Empty list of types.");
 +
 +  // If any of the given types is signed, we must return a signed type.
 +  bool Signed = false;
 +  for (const auto &Type : Types) {
-+    Signed |= Type.second;
++    Signed |= Type.Signed;
 +  }
 +
 +  // The encompassing type must have a width greater than or equal to the width
@@ -104,7 +122,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +  // given.
 +  unsigned Width = 0;
 +  for (const auto &Type : Types) {
-+    unsigned MinWidth = Type.first + (Signed && !Type.second);
++    unsigned MinWidth = Type.Width + (Signed && !Type.Signed);
 +    if (Width < MinWidth) {
 +      Width = MinWidth;
 +    }
@@ -113,19 +131,10 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +  return {Width, Signed};
 +}
 +
-+static std::pair<unsigned, bool>
-+IntegerWidthAndSignedness(const clang::ASTContext &context,
-+                          const clang::QualType Type) {
-+  assert(Type->isIntegerType() && "Given type is not an integer.");
-+  unsigned Width = Type->isBooleanType() ? 1 : context.getTypeInfo(Type).Width;
-+  bool Signed = Type->isSignedIntegerType();
-+  return {Width, Signed};
-+}
-+
  Value *CodeGenFunction::EmitVAStartEnd(Value *ArgValue, bool IsStart) {
    llvm::Type *DestType = Int8PtrTy;
    if (ArgValue->getType() != DestType)
-@@ -1544,6 +1585,96 @@
+@@ -1544,6 +1592,78 @@
      Builder.CreateStore(CarryOut, CarryOutPtr);
      return RValue::get(Sum2);
    }
@@ -142,30 +151,29 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    clang::QualType RQTy =
 +        RArg->getType()->castAs<PointerType>()->getPointeeType();
 +
-+    auto XITy = IntegerWidthAndSignedness(CGM.getContext(), XQTy);
-+    auto YITy = IntegerWidthAndSignedness(CGM.getContext(), YQTy);
-+    auto RITy = IntegerWidthAndSignedness(CGM.getContext(), RQTy);
++    auto XITy = getIntegerWidthAndSignedness(CGM.getContext(), XQTy);
++    auto YITy = getIntegerWidthAndSignedness(CGM.getContext(), YQTy);
++    auto RITy = getIntegerWidthAndSignedness(CGM.getContext(), RQTy);
 +    auto EITy = EncompassingIntegerType({XITy, YITy, RITy});
 +
-+    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.first);
++    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.Width);
 +    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
 +
-+    bool Signed = EITy.second;
 +    llvm::Intrinsic::ID IntrinsicId;
 +    switch (BuiltinID) {
 +    default:
-+      llvm_unreachable("Unknown security overflow builtin id.");
++      llvm_unreachable("Unknown overflow builtin id.");
 +    case Builtin::BI__builtin_add_overflow:
-+      IntrinsicId = Signed ? llvm::Intrinsic::sadd_with_overflow
-+                           : llvm::Intrinsic::uadd_with_overflow;
++      IntrinsicId = EITy.Signed ? llvm::Intrinsic::sadd_with_overflow
++                                : llvm::Intrinsic::uadd_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_sub_overflow:
-+      IntrinsicId = Signed ? llvm::Intrinsic::ssub_with_overflow
-+                           : llvm::Intrinsic::usub_with_overflow;
++      IntrinsicId = EITy.Signed ? llvm::Intrinsic::ssub_with_overflow
++                                : llvm::Intrinsic::usub_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_mul_overflow:
-+      IntrinsicId = Signed ? llvm::Intrinsic::smul_with_overflow
-+                           : llvm::Intrinsic::umul_with_overflow;
++      IntrinsicId = EITy.Signed ? llvm::Intrinsic::smul_with_overflow
++                                : llvm::Intrinsic::umul_with_overflow;
 +      break;
 +    }
 +
@@ -174,46 +182,29 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +    Address OutPtr = EmitPointerWithAlignment(RArg);
 +
 +    // Extend each operand to the encompassing type.
-+    if (XQTy->isSignedIntegerType()) {
-+      X = Builder.CreateSExt(X, ELTy);
-+    } else {
-+      X = Builder.CreateZExt(X, ELTy);
-+    }
-+    if (YQTy->isSignedIntegerType()) {
-+      Y = Builder.CreateSExt(Y, ELTy);
-+    } else {
-+      Y = Builder.CreateZExt(Y, ELTy);
-+    }
++    X = Builder.CreateIntCast(X, ELTy, XITy.Signed);
++    Y = Builder.CreateIntCast(Y, ELTy, YITy.Signed);
 +
 +    // Perform the operation on the extended values.
 +    llvm::Value *Overflow, *Q;
 +    Q = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Overflow);
 +
-+    if (EITy.first > RITy.first) {
++    if (EITy.Width > RITy.Width) {
 +      // The encompassing type is wider than the result type, so we need to
 +      // truncate it.
 +      llvm::Value *QTrunc = Builder.CreateTrunc(Q, RLTy);
 +
 +      // To see if the truncation caused an overflow, we will extend
 +      // the result and then compare it to the original result.
-+      llvm::Value *QTruncExt;
-+      if (RQTy->isSignedIntegerType()) {
-+        QTruncExt = Builder.CreateSExt(QTrunc, ELTy);
-+      } else {
-+        QTruncExt = Builder.CreateZExt(QTrunc, ELTy);
-+      }
++      llvm::Value *QTruncExt = Builder.CreateIntCast(QTrunc, ELTy, RITy.Signed);
 +      llvm::Value *TruncationOverflow = Builder.CreateICmpNE(Q, QTruncExt);
 +
 +      Overflow = Builder.CreateOr(Overflow, TruncationOverflow);
 +      Q = QTrunc;
 +    }
 +
-+    // Some types (like _Bool) are stored in memory using a larger
-+    // number of bits than their natural representation in LLVM IR, so
-+    // we have to extend them before storing.
-+    Q = Builder.CreateZExt(Q, OutPtr.getElementType());
-+
 +    // Finally, store the result using the pointer.
++    Q = Builder.CreateZExt(Q, OutPtr.getElementType());
 +    Builder.CreateStore(Q, OutPtr);
 +
 +    return RValue::get(Overflow);
@@ -222,6 +213,15 @@ Index: lib/CodeGen/CGBuiltin.cpp
    case Builtin::BI__builtin_uadd_overflow:
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
+@@ -1573,7 +1693,7 @@
+     // Decide which of the overflow intrinsics we are lowering to:
+     llvm::Intrinsic::ID IntrinsicId;
+     switch (BuiltinID) {
+-    default: llvm_unreachable("Unknown security overflow builtin id.");
++    default: llvm_unreachable("Unknown overflow builtin id.");
+     case Builtin::BI__builtin_uadd_overflow:
+     case Builtin::BI__builtin_uaddl_overflow:
+     case Builtin::BI__builtin_uaddll_overflow:
 Index: lib/Sema/SemaChecking.cpp
 ===================================================================
 --- lib/Sema/SemaChecking.cpp	(revision 248284)
