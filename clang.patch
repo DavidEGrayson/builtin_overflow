@@ -134,7 +134,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
  Value *CodeGenFunction::EmitVAStartEnd(Value *ArgValue, bool IsStart) {
    llvm::Type *DestType = Int8PtrTy;
    if (ArgValue->getType() != DestType)
-@@ -1544,6 +1592,78 @@
+@@ -1544,6 +1592,86 @@
      Builder.CreateStore(CarryOut, CarryOutPtr);
      return RValue::get(Sum2);
    }
@@ -142,70 +142,78 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +  case Builtin::BI__builtin_add_overflow:
 +  case Builtin::BI__builtin_sub_overflow:
 +  case Builtin::BI__builtin_mul_overflow: {
-+    const clang::Expr *XArg = E->getArg(0);
-+    const clang::Expr *YArg = E->getArg(1);
-+    const clang::Expr *RArg = E->getArg(2);
++    const clang::Expr *LeftArg = E->getArg(0);
++    const clang::Expr *RightArg = E->getArg(1);
++    const clang::Expr *ResultArg = E->getArg(2);
 +
-+    clang::QualType XQTy = XArg->getType();
-+    clang::QualType YQTy = YArg->getType();
-+    clang::QualType RQTy =
-+        RArg->getType()->castAs<PointerType>()->getPointeeType();
++    clang::QualType ResultQTy =
++        ResultArg->getType()->castAs<PointerType>()->getPointeeType();
 +
-+    auto XITy = getIntegerWidthAndSignedness(CGM.getContext(), XQTy);
-+    auto YITy = getIntegerWidthAndSignedness(CGM.getContext(), YQTy);
-+    auto RITy = getIntegerWidthAndSignedness(CGM.getContext(), RQTy);
-+    auto EITy = EncompassingIntegerType({XITy, YITy, RITy});
++    WidthAndSignedness LeftInfo =
++        getIntegerWidthAndSignedness(CGM.getContext(), LeftArg->getType());
++    WidthAndSignedness RightInfo =
++        getIntegerWidthAndSignedness(CGM.getContext(), RightArg->getType());
++    WidthAndSignedness ResultInfo =
++        getIntegerWidthAndSignedness(CGM.getContext(), ResultQTy);
++    WidthAndSignedness EncompassingInfo =
++        EncompassingIntegerType({LeftInfo, RightInfo, ResultInfo});
 +
-+    llvm::Type *ELTy = llvm::IntegerType::get(CGM.getLLVMContext(), EITy.Width);
-+    llvm::Type *RLTy = CGM.getTypes().ConvertType(RQTy);
++    llvm::Type *EncompassingLLVMTy =
++        llvm::IntegerType::get(CGM.getLLVMContext(), EncompassingInfo.Width);
++
++    llvm::Type *ResultLLVMTy = CGM.getTypes().ConvertType(ResultQTy);
 +
 +    llvm::Intrinsic::ID IntrinsicId;
 +    switch (BuiltinID) {
 +    default:
 +      llvm_unreachable("Unknown overflow builtin id.");
 +    case Builtin::BI__builtin_add_overflow:
-+      IntrinsicId = EITy.Signed ? llvm::Intrinsic::sadd_with_overflow
-+                                : llvm::Intrinsic::uadd_with_overflow;
++      IntrinsicId = EncompassingInfo.Signed
++                        ? llvm::Intrinsic::sadd_with_overflow
++                        : llvm::Intrinsic::uadd_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_sub_overflow:
-+      IntrinsicId = EITy.Signed ? llvm::Intrinsic::ssub_with_overflow
-+                                : llvm::Intrinsic::usub_with_overflow;
++      IntrinsicId = EncompassingInfo.Signed
++                        ? llvm::Intrinsic::ssub_with_overflow
++                        : llvm::Intrinsic::usub_with_overflow;
 +      break;
 +    case Builtin::BI__builtin_mul_overflow:
-+      IntrinsicId = EITy.Signed ? llvm::Intrinsic::smul_with_overflow
-+                                : llvm::Intrinsic::umul_with_overflow;
++      IntrinsicId = EncompassingInfo.Signed
++                        ? llvm::Intrinsic::smul_with_overflow
++                        : llvm::Intrinsic::umul_with_overflow;
 +      break;
 +    }
 +
-+    llvm::Value *X = EmitScalarExpr(XArg);
-+    llvm::Value *Y = EmitScalarExpr(YArg);
-+    Address OutPtr = EmitPointerWithAlignment(RArg);
++    llvm::Value *Left = EmitScalarExpr(LeftArg);
++    llvm::Value *Right = EmitScalarExpr(RightArg);
++    Address ResultPtr = EmitPointerWithAlignment(ResultArg);
 +
 +    // Extend each operand to the encompassing type.
-+    X = Builder.CreateIntCast(X, ELTy, XITy.Signed);
-+    Y = Builder.CreateIntCast(Y, ELTy, YITy.Signed);
++    Left = Builder.CreateIntCast(Left, EncompassingLLVMTy, LeftInfo.Signed);
++    Right = Builder.CreateIntCast(Right, EncompassingLLVMTy, RightInfo.Signed);
 +
 +    // Perform the operation on the extended values.
-+    llvm::Value *Overflow, *Q;
-+    Q = EmitOverflowIntrinsic(*this, IntrinsicId, X, Y, Overflow);
++    llvm::Value *Overflow, *Result;
++    Result = EmitOverflowIntrinsic(*this, IntrinsicId, Left, Right, Overflow);
 +
-+    if (EITy.Width > RITy.Width) {
++    if (EncompassingInfo.Width > ResultInfo.Width) {
 +      // The encompassing type is wider than the result type, so we need to
 +      // truncate it.
-+      llvm::Value *QTrunc = Builder.CreateTrunc(Q, RLTy);
++      llvm::Value *ResultTrunc = Builder.CreateTrunc(Result, ResultLLVMTy);
 +
 +      // To see if the truncation caused an overflow, we will extend
 +      // the result and then compare it to the original result.
-+      llvm::Value *QTruncExt = Builder.CreateIntCast(QTrunc, ELTy, RITy.Signed);
-+      llvm::Value *TruncationOverflow = Builder.CreateICmpNE(Q, QTruncExt);
++      llvm::Value *ResultTruncExt = Builder.CreateIntCast(
++          ResultTrunc, EncompassingLLVMTy, ResultInfo.Signed);
++      llvm::Value *TruncationOverflow =
++          Builder.CreateICmpNE(Result, ResultTruncExt);
 +
 +      Overflow = Builder.CreateOr(Overflow, TruncationOverflow);
-+      Q = QTrunc;
++      Result = ResultTrunc;
 +    }
 +
 +    // Finally, store the result using the pointer.
-+    Q = EmitToMemory(Q, RQTy);
-+    Builder.CreateStore(Q, OutPtr);
++    Builder.CreateStore(EmitToMemory(Result, ResultQTy), ResultPtr);
 +
 +    return RValue::get(Overflow);
 +  }
@@ -213,7 +221,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
    case Builtin::BI__builtin_uadd_overflow:
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
-@@ -1573,7 +1693,7 @@
+@@ -1573,7 +1701,7 @@
      // Decide which of the overflow intrinsics we are lowering to:
      llvm::Intrinsic::ID IntrinsicId;
      switch (BuiltinID) {
