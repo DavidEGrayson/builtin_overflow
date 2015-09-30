@@ -230,7 +230,7 @@ Index: lib/Sema/SemaChecking.cpp
 ===================================================================
 --- lib/Sema/SemaChecking.cpp	(revision 248284)
 +++ lib/Sema/SemaChecking.cpp	(working copy)
-@@ -112,6 +112,36 @@
+@@ -112,6 +112,37 @@
    return false;
  }
  
@@ -258,6 +258,7 @@ Index: lib/Sema/SemaChecking.cpp
 +          !PtrTy->getPointeeType().isConstQualified())) {
 +      S.Diag(Arg->getLocStart(), diag::err_overflow_builtin_must_be_ptr_int)
 +          << Ty << Arg->getSourceRange();
++      return true;
 +    }
 +  }
 +
@@ -267,7 +268,7 @@ Index: lib/Sema/SemaChecking.cpp
  static void SemaBuiltinMemChkCall(Sema &S, FunctionDecl *FDecl,
  		                  CallExpr *TheCall, unsigned SizeIdx,
                                    unsigned DstSizeIdx) {
-@@ -457,6 +487,12 @@
+@@ -457,6 +488,12 @@
      if (SemaBuiltinAddressof(*this, TheCall))
        return ExprError();
      break;
