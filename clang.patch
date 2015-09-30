@@ -79,7 +79,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
 ===================================================================
 --- lib/CodeGen/CGBuiltin.cpp	(revision 248284)
 +++ lib/CodeGen/CGBuiltin.cpp	(working copy)
-@@ -278,6 +278,54 @@
+@@ -278,6 +278,50 @@
    return CGF.Builder.CreateExtractValue(Tmp, 0);
  }
  
@@ -102,10 +102,6 @@ Index: lib/CodeGen/CGBuiltin.cpp
 +// Given one or more integer types, this function produces an integer type that
 +// encompasses them: any value in one of the given types could be expressed in
 +// the encompassing type.
-+//
-+// This function operates on objects of type std::pair<unsigned, bool>, where
-+// the first element is the bit width of an integer type and the second element
-+// is true if the integer type is signed.
 +static struct WidthAndSignedness
 +EncompassingIntegerType(ArrayRef<struct WidthAndSignedness> Types) {
 +  assert(Types.size() > 0 && "Empty list of types.");
@@ -134,7 +130,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
  Value *CodeGenFunction::EmitVAStartEnd(Value *ArgValue, bool IsStart) {
    llvm::Type *DestType = Int8PtrTy;
    if (ArgValue->getType() != DestType)
-@@ -1544,6 +1592,86 @@
+@@ -1544,6 +1588,86 @@
      Builder.CreateStore(CarryOut, CarryOutPtr);
      return RValue::get(Sum2);
    }
@@ -221,7 +217,7 @@ Index: lib/CodeGen/CGBuiltin.cpp
    case Builtin::BI__builtin_uadd_overflow:
    case Builtin::BI__builtin_uaddl_overflow:
    case Builtin::BI__builtin_uaddll_overflow:
-@@ -1573,7 +1701,7 @@
+@@ -1573,7 +1697,7 @@
      // Decide which of the overflow intrinsics we are lowering to:
      llvm::Intrinsic::ID IntrinsicId;
      switch (BuiltinID) {
